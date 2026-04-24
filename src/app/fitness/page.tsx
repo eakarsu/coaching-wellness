@@ -1,27 +1,69 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { Workout, Exercise, Client } from '@/types';
+import { useState, useEffect, useMemo } from 'react';
+import { Workout, Exercise, Client, SortState } from '@/types';
+import { useToast } from '@/components/Toast';
+import { GridSkeleton } from '@/components/LoadingSkeleton';
+import SortHeader, { useSortData, toggleSort } from '@/components/SortHeader';
+import Pagination from '@/components/Pagination';
+import BulkActions from '@/components/BulkActions';
+import ExportButtons, { exportToJSON, exportToCSV, exportToPDF } from '@/components/ExportButtons';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function FitnessPage() {
+  // --- Data state ---
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // --- Tab ---
   const [activeTab, setActiveTab] = useState<'workouts' | 'exercises'>('workouts');
+
+  // --- Modals ---
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deletingItem, setDeletingItem] = useState<{ id: string; type: 'workout' | 'exercise'; name: string } | null>(null);
-  const [viewingWorkout, setViewingWorkout] = useState<Workout | null>(null);
-  const [viewingExercise, setViewingExercise] = useState<Exercise | null>(null);
   const [modalType, setModalType] = useState<'workout' | 'exercise'>('workout');
   const [editingItem, setEditingItem] = useState<Workout | Exercise | null>(null);
+  const [viewingWorkout, setViewingWorkout] = useState<Workout | null>(null);
+  const [viewingExercise, setViewingExercise] = useState<Exercise | null>(null);
+
+  // --- Delete confirm ---
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingItem, setDeletingItem] = useState<{ id: string; type: 'workout' | 'exercise'; name: string } | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+
+  // --- Search ---
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // --- Filters ---
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterDifficulty, setFilterDifficulty] = useState('all');
+
+  // --- Sort ---
+  const [workoutSort, setWorkoutSort] = useState<SortState>({ field: 'name', direction: 'asc' });
+  const [exerciseSort, setExerciseSort] = useState<SortState>({ field: 'name', direction: 'asc' });
+
+  // --- Pagination ---
+  const [workoutPage, setWorkoutPage] = useState(1);
+  const [workoutPageSize, setWorkoutPageSize] = useState(15);
+  const [exercisePage, setExercisePage] = useState(1);
+  const [exercisePageSize, setExercisePageSize] = useState(15);
+
+  // --- Bulk selection ---
+  const [selectedWorkoutIds, setSelectedWorkoutIds] = useState<Set<string>>(new Set());
+  const [selectedExerciseIds, setSelectedExerciseIds] = useState<Set<string>>(new Set());
+
+  // --- AI ---
   const [aiLoading, setAiLoading] = useState(false);
 
+  // --- Form validation ---
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // --- Toast ---
+  const { showToast } = useToast();
+
+  // --- Form state ---
   const [workoutForm, setWorkoutForm] = useState({
     clientId: '', clientName: '', name: '', description: '', category: '', difficulty: 'beginner', duration: '', caloriesBurned: '', exercises: '', creationType: 'manual' as 'manual' | 'ai'
   });
@@ -30,6 +72,7 @@ export default function FitnessPage() {
     clientId: '', clientName: '', name: '', description: '', muscleGroup: '', equipment: '', instructions: '', sets: '', reps: '', restTime: '', creationType: 'manual' as 'manual' | 'ai'
   });
 
+  // ========== Fetch data ==========
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
@@ -47,12 +90,84 @@ export default function FitnessPage() {
       setWorkouts(Array.isArray(workoutsData) ? workoutsData : []);
       setExercises(Array.isArray(exercisesData) ? exercisesData : []);
       setClients(Array.isArray(clientsData) ? clientsData : []);
-    } catch (error) { console.error('Failed to fetch data:', error); }
-    finally { setLoading(false); }
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+      showToast('Failed to load data', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // ========== Filtered + sorted + paginated data ==========
+  const categories = useMemo(() => [...new Set(workouts.map(w => w.category).filter(Boolean))], [workouts]);
+
+  const filteredWorkouts = useMemo(() => {
+    return workouts.filter(w => {
+      const matchesSearch = !searchQuery || w.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = filterCategory === 'all' || w.category === filterCategory;
+      const matchesDifficulty = filterDifficulty === 'all' || w.difficulty === filterDifficulty;
+      return matchesSearch && matchesCategory && matchesDifficulty;
+    });
+  }, [workouts, searchQuery, filterCategory, filterDifficulty]);
+
+  const filteredExercises = useMemo(() => {
+    return exercises.filter(e => {
+      const matchesSearch = !searchQuery || e.name.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesSearch;
+    });
+  }, [exercises, searchQuery]);
+
+  const sortedWorkouts = useSortData(filteredWorkouts, workoutSort);
+  const sortedExercises = useSortData(filteredExercises, exerciseSort);
+
+  const workoutTotalPages = Math.max(1, Math.ceil(sortedWorkouts.length / workoutPageSize));
+  const exerciseTotalPages = Math.max(1, Math.ceil(sortedExercises.length / exercisePageSize));
+
+  const paginatedWorkouts = useMemo(() => {
+    const start = (workoutPage - 1) * workoutPageSize;
+    return sortedWorkouts.slice(start, start + workoutPageSize);
+  }, [sortedWorkouts, workoutPage, workoutPageSize]);
+
+  const paginatedExercises = useMemo(() => {
+    const start = (exercisePage - 1) * exercisePageSize;
+    return sortedExercises.slice(start, start + exercisePageSize);
+  }, [sortedExercises, exercisePage, exercisePageSize]);
+
+  // Reset to page 1 on filter/search change
+  useEffect(() => { setWorkoutPage(1); }, [searchQuery, filterCategory, filterDifficulty, workoutSort]);
+  useEffect(() => { setExercisePage(1); }, [searchQuery, exerciseSort]);
+
+  // ========== Difficulty color ==========
+  const getDifficultyColor = (difficulty: string) => {
+    switch (difficulty) {
+      case 'beginner': return 'bg-green-500/20 text-green-400';
+      case 'intermediate': return 'bg-yellow-500/20 text-yellow-400';
+      case 'advanced': return 'bg-red-500/20 text-red-400';
+      default: return 'bg-gray-500/20 text-gray-400';
+    }
+  };
+
+  // ========== Form validation ==========
+  const validateWorkoutForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!workoutForm.name.trim()) errors.name = 'Name is required';
+    if (!workoutForm.clientId) errors.clientId = 'Client is required';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateExerciseForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!exerciseForm.name.trim()) errors.name = 'Name is required';
+    if (!exerciseForm.clientId) errors.clientId = 'Client is required';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // ========== CRUD: Workout ==========
   const handleWorkoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateWorkoutForm()) return;
     try {
       const method = editingItem ? 'PUT' : 'POST';
       const selectedClient = clients.find(c => c.id === workoutForm.clientId);
@@ -65,12 +180,23 @@ export default function FitnessPage() {
         creationType: workoutForm.creationType
       };
       const res = await fetch('/api/workouts', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (res.ok) { fetchData(); closeModal(); }
-    } catch (error) { console.error('Failed to save workout:', error); }
+      if (res.ok) {
+        showToast(editingItem ? 'Workout updated successfully' : 'Workout created successfully', 'success');
+        fetchData();
+        closeModal();
+      } else {
+        showToast('Failed to save workout', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to save workout:', error);
+      showToast('Failed to save workout', 'error');
+    }
   };
 
+  // ========== CRUD: Exercise ==========
   const handleExerciseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateExerciseForm()) return;
     try {
       const method = editingItem ? 'PUT' : 'POST';
       const selectedClient = clients.find(c => c.id === exerciseForm.clientId);
@@ -84,13 +210,23 @@ export default function FitnessPage() {
         creationType: exerciseForm.creationType
       };
       const res = await fetch('/api/exercises', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (res.ok) { fetchData(); closeModal(); }
-    } catch (error) { console.error('Failed to save exercise:', error); }
+      if (res.ok) {
+        showToast(editingItem ? 'Exercise updated successfully' : 'Exercise created successfully', 'success');
+        fetchData();
+        closeModal();
+      } else {
+        showToast('Failed to save exercise', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to save exercise:', error);
+      showToast('Failed to save exercise', 'error');
+    }
   };
 
+  // ========== Delete ==========
   const handleDeleteClick = (id: string, type: 'workout' | 'exercise', name: string) => {
     setDeletingItem({ id, type, name });
-    setShowDeleteModal(true);
+    setShowDeleteConfirm(true);
   };
 
   const handleDeleteConfirm = async () => {
@@ -99,32 +235,113 @@ export default function FitnessPage() {
       const endpoint = deletingItem.type === 'workout' ? '/api/workouts' : '/api/exercises';
       const res = await fetch(`${endpoint}?id=${deletingItem.id}`, { method: 'DELETE' });
       if (res.ok) {
+        showToast(`${deletingItem.type === 'workout' ? 'Workout' : 'Exercise'} deleted successfully`, 'success');
         fetchData();
-        setShowDeleteModal(false);
+        setShowDeleteConfirm(false);
         setDeletingItem(null);
+        // Also close view modal if open
+        if (showViewModal) setShowViewModal(false);
       } else {
-        console.error('Delete failed:', await res.text());
+        showToast('Delete failed', 'error');
       }
-    } catch (error) { console.error('Failed to delete:', error); }
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      showToast('Failed to delete', 'error');
+    }
   };
 
+  // ========== Bulk delete ==========
+  const handleBulkDeleteConfirm = async () => {
+    const ids = activeTab === 'workouts' ? selectedWorkoutIds : selectedExerciseIds;
+    const endpoint = activeTab === 'workouts' ? '/api/workouts' : '/api/exercises';
+    let successCount = 0;
+    let failCount = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch(`${endpoint}?id=${id}`, { method: 'DELETE' });
+        if (res.ok) successCount++;
+        else failCount++;
+      } catch {
+        failCount++;
+      }
+    }
+    if (successCount > 0) {
+      showToast(`Deleted ${successCount} item(s) successfully`, 'success');
+    }
+    if (failCount > 0) {
+      showToast(`Failed to delete ${failCount} item(s)`, 'error');
+    }
+    if (activeTab === 'workouts') setSelectedWorkoutIds(new Set());
+    else setSelectedExerciseIds(new Set());
+    setShowBulkDeleteConfirm(false);
+    fetchData();
+  };
+
+  // ========== Bulk export ==========
+  const handleBulkExport = () => {
+    if (activeTab === 'workouts') {
+      const selected = workouts.filter(w => selectedWorkoutIds.has(w.id));
+      exportToJSON(selected, 'workouts-selected');
+      showToast(`Exported ${selected.length} workout(s)`, 'success');
+    } else {
+      const selected = exercises.filter(e => selectedExerciseIds.has(e.id));
+      exportToJSON(selected, 'exercises-selected');
+      showToast(`Exported ${selected.length} exercise(s)`, 'success');
+    }
+  };
+
+  // ========== Selection helpers ==========
+  const toggleWorkoutSelection = (id: string) => {
+    setSelectedWorkoutIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleExerciseSelection = (id: string) => {
+    setSelectedExerciseIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // ========== Edit handlers ==========
   const handleEditWorkout = (workout: Workout) => {
     setEditingItem(workout);
     setModalType('workout');
-    setWorkoutForm({ clientId: workout.clientId || '', clientName: workout.clientName || '', name: workout.name, description: workout.description || '', category: workout.category || '', difficulty: workout.difficulty || 'beginner', duration: workout.duration?.toString() || '', caloriesBurned: workout.caloriesBurned?.toString() || '', exercises: workout.exercises || '', creationType: workout.creationType || 'manual' });
+    setFormErrors({});
+    setWorkoutForm({
+      clientId: workout.clientId || '', clientName: workout.clientName || '', name: workout.name,
+      description: workout.description || '', category: workout.category || '',
+      difficulty: workout.difficulty || 'beginner', duration: workout.duration?.toString() || '',
+      caloriesBurned: workout.caloriesBurned?.toString() || '', exercises: workout.exercises || '',
+      creationType: workout.creationType || 'manual'
+    });
     setShowModal(true);
   };
 
   const handleEditExercise = (exercise: Exercise) => {
     setEditingItem(exercise);
     setModalType('exercise');
-    setExerciseForm({ clientId: exercise.clientId || '', clientName: exercise.clientName || '', name: exercise.name, description: exercise.description || '', muscleGroup: exercise.muscleGroup || '', equipment: exercise.equipment || '', instructions: exercise.instructions || '', sets: exercise.sets?.toString() || '', reps: exercise.reps?.toString() || '', restTime: exercise.restTime?.toString() || '', creationType: exercise.creationType || 'manual' });
+    setFormErrors({});
+    setExerciseForm({
+      clientId: exercise.clientId || '', clientName: exercise.clientName || '', name: exercise.name,
+      description: exercise.description || '', muscleGroup: exercise.muscleGroup || '',
+      equipment: exercise.equipment || '', instructions: exercise.instructions || '',
+      sets: exercise.sets?.toString() || '', reps: exercise.reps?.toString() || '',
+      restTime: exercise.restTime?.toString() || '', creationType: exercise.creationType || 'manual'
+    });
     setShowModal(true);
   };
 
   const handleAddNew = (type: 'workout' | 'exercise') => {
     setEditingItem(null);
     setModalType(type);
+    setFormErrors({});
     if (type === 'workout') {
       setWorkoutForm({ clientId: '', clientName: '', name: '', description: '', category: '', difficulty: 'beginner', duration: '', caloriesBurned: '', exercises: '', creationType: 'manual' });
     } else {
@@ -133,76 +350,67 @@ export default function FitnessPage() {
     setShowModal(true);
   };
 
-  const closeModal = () => { setShowModal(false); setEditingItem(null); };
+  const closeModal = () => { setShowModal(false); setEditingItem(null); setFormErrors({}); };
 
-  // Check for existing entry when client is selected (by creation type)
+  // ========== Client change (loads existing entry) ==========
   const handleWorkoutClientChange = (clientId: string) => {
     const creationType = workoutForm.creationType;
     const existingWorkout = workouts.find(w => w.clientId === clientId && w.creationType === creationType);
     if (existingWorkout) {
-      // Load existing workout for editing
       setEditingItem(existingWorkout);
       setWorkoutForm({
-        clientId: existingWorkout.clientId || '',
-        clientName: existingWorkout.clientName || '',
-        name: existingWorkout.name,
-        description: existingWorkout.description || '',
-        category: existingWorkout.category || '',
-        difficulty: existingWorkout.difficulty || 'beginner',
-        duration: existingWorkout.duration?.toString() || '',
-        caloriesBurned: existingWorkout.caloriesBurned?.toString() || '',
-        exercises: existingWorkout.exercises || '',
-        creationType: existingWorkout.creationType || 'manual'
+        clientId: existingWorkout.clientId || '', clientName: existingWorkout.clientName || '',
+        name: existingWorkout.name, description: existingWorkout.description || '',
+        category: existingWorkout.category || '', difficulty: existingWorkout.difficulty || 'beginner',
+        duration: existingWorkout.duration?.toString() || '', caloriesBurned: existingWorkout.caloriesBurned?.toString() || '',
+        exercises: existingWorkout.exercises || '', creationType: existingWorkout.creationType || 'manual'
       });
     } else {
       setEditingItem(null);
       setWorkoutForm({ ...workoutForm, clientId, clientName: '' });
     }
+    setFormErrors(prev => { const n = { ...prev }; delete n.clientId; return n; });
   };
 
   const handleExerciseClientChange = (clientId: string) => {
     const creationType = exerciseForm.creationType;
     const existingExercise = exercises.find(e => e.clientId === clientId && e.creationType === creationType);
     if (existingExercise) {
-      // Load existing exercise for editing
       setEditingItem(existingExercise);
       setExerciseForm({
-        clientId: existingExercise.clientId || '',
-        clientName: existingExercise.clientName || '',
-        name: existingExercise.name,
-        description: existingExercise.description || '',
-        muscleGroup: existingExercise.muscleGroup || '',
-        equipment: existingExercise.equipment || '',
-        instructions: existingExercise.instructions || '',
-        sets: existingExercise.sets?.toString() || '',
-        reps: existingExercise.reps?.toString() || '',
-        restTime: existingExercise.restTime?.toString() || '',
+        clientId: existingExercise.clientId || '', clientName: existingExercise.clientName || '',
+        name: existingExercise.name, description: existingExercise.description || '',
+        muscleGroup: existingExercise.muscleGroup || '', equipment: existingExercise.equipment || '',
+        instructions: existingExercise.instructions || '', sets: existingExercise.sets?.toString() || '',
+        reps: existingExercise.reps?.toString() || '', restTime: existingExercise.restTime?.toString() || '',
         creationType: existingExercise.creationType || 'manual'
       });
     } else {
       setEditingItem(null);
       setExerciseForm({ ...exerciseForm, clientId, clientName: '' });
     }
+    setFormErrors(prev => { const n = { ...prev }; delete n.clientId; return n; });
   };
 
+  // ========== AI generation ==========
   const handleGenerateAI = async () => {
+    const currentForm = modalType === 'workout' ? workoutForm : exerciseForm;
+    if (!currentForm.clientId) {
+      showToast('Please select a client first', 'warning');
+      return;
+    }
     setAiLoading(true);
     try {
       const type = modalType === 'workout' ? 'workout' : 'exercise';
-      const currentForm = modalType === 'workout' ? workoutForm : exerciseForm;
       const selectedClient = clients.find(c => c.id === currentForm.clientId);
 
       // Check if client already has an AI entry
       if (modalType === 'workout') {
         const existingAI = workouts.find(w => w.clientId === currentForm.clientId && w.creationType === 'ai');
-        if (existingAI) {
-          setEditingItem(existingAI);
-        }
+        if (existingAI) setEditingItem(existingAI);
       } else {
         const existingAI = exercises.find(e => e.clientId === currentForm.clientId && e.creationType === 'ai');
-        if (existingAI) {
-          setEditingItem(existingAI);
-        }
+        if (existingAI) setEditingItem(existingAI);
       }
 
       const context = selectedClient ? {
@@ -221,36 +429,31 @@ export default function FitnessPage() {
       if (modalType === 'workout') {
         setWorkoutForm({
           ...workoutForm,
-          name: data.name || '',
-          description: data.description || '',
-          category: data.category || '',
-          difficulty: data.difficulty?.toLowerCase() || 'intermediate',
-          duration: data.duration?.toString() || '',
-          caloriesBurned: data.caloriesBurned?.toString() || '',
-          exercises: data.exercises || '',
-          creationType: 'ai'
+          name: data.name || '', description: data.description || '',
+          category: data.category || '', difficulty: data.difficulty?.toLowerCase() || 'intermediate',
+          duration: data.duration?.toString() || '', caloriesBurned: data.caloriesBurned?.toString() || '',
+          exercises: data.exercises || '', creationType: 'ai'
         });
       } else {
         setExerciseForm({
           ...exerciseForm,
-          name: data.name || '',
-          description: data.description || '',
-          muscleGroup: data.muscleGroup || '',
-          equipment: data.equipment || '',
-          instructions: data.instructions || '',
-          sets: data.sets?.toString() || '',
-          reps: data.reps?.toString() || '',
-          restTime: data.restTime?.toString() || '60',
+          name: data.name || '', description: data.description || '',
+          muscleGroup: data.muscleGroup || '', equipment: data.equipment || '',
+          instructions: data.instructions || '', sets: data.sets?.toString() || '',
+          reps: data.reps?.toString() || '', restTime: data.restTime?.toString() || '60',
           creationType: 'ai'
         });
       }
+      showToast('AI content generated successfully', 'success');
     } catch (error) {
       console.error('AI generation failed:', error);
+      showToast('AI generation failed', 'error');
     } finally {
       setAiLoading(false);
     }
   };
 
+  // ========== View handlers ==========
   const handleViewWorkout = (workout: Workout) => {
     setViewingWorkout(workout);
     setViewingExercise(null);
@@ -263,124 +466,283 @@ export default function FitnessPage() {
     setShowViewModal(true);
   };
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'beginner': return 'bg-green-500/20 text-green-400';
-      case 'intermediate': return 'bg-yellow-500/20 text-yellow-400';
-      case 'advanced': return 'bg-red-500/20 text-red-400';
-      default: return 'bg-gray-500/20 text-gray-400';
-    }
-  };
-
-  const filteredWorkouts = workouts.filter(w => {
-    const matchesCategory = filterCategory === 'all' || w.category === filterCategory;
-    const matchesDifficulty = filterDifficulty === 'all' || w.difficulty === filterDifficulty;
-    return matchesCategory && matchesDifficulty;
-  });
-
-  const categories = [...new Set(workouts.map(w => w.category))];
-
+  // ========== Render ==========
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      <header className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="text-gray-400 hover:text-white">← Back</Link>
-              <div>
-                <h1 className="text-2xl font-bold text-white flex items-center gap-2"><span className="text-3xl">💪</span> Fitness Programs</h1>
-                <p className="text-gray-400 text-sm">Workouts and exercises library</p>
-              </div>
-            </div>
-            <button onClick={() => handleAddNew(activeTab === 'workouts' ? 'workout' : 'exercise')} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-              + Add {activeTab === 'workouts' ? 'Workout' : 'Exercise'}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+
+        {/* Tabs + Add button row */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div className="flex gap-4">
+            <button
+              onClick={() => { setActiveTab('workouts'); setSearchQuery(''); setSelectedExerciseIds(new Set()); }}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'workouts' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+            >
+              Workouts ({workouts.length})
+            </button>
+            <button
+              onClick={() => { setActiveTab('exercises'); setSearchQuery(''); setSelectedWorkoutIds(new Set()); }}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'exercises' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+            >
+              Exercises ({exercises.length})
             </button>
           </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex gap-4 mb-6">
-          <button onClick={() => setActiveTab('workouts')} className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'workouts' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
-            Workouts ({workouts.length})
-          </button>
-          <button onClick={() => setActiveTab('exercises')} className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'exercises' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
-            Exercises ({exercises.length})
+          <button
+            onClick={() => handleAddNew(activeTab === 'workouts' ? 'workout' : 'exercise')}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            + Add {activeTab === 'workouts' ? 'Workout' : 'Exercise'}
           </button>
         </div>
 
-        {activeTab === 'workouts' && (
-          <div className="flex gap-4 mb-6">
-            <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white">
-              <option value="all">All Categories</option>
-              {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-            </select>
-            <select value={filterDifficulty} onChange={(e) => setFilterDifficulty(e.target.value)} className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white">
-              <option value="all">All Difficulty</option>
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
-            </select>
+        {/* Search + Filters + Sort + Export row */}
+        <div className="flex flex-col lg:flex-row gap-4 mb-6">
+          {/* Search */}
+          <div className="relative flex-1 max-w-md">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder={`Search ${activeTab}...`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
+            />
           </div>
+
+          {/* Advanced filters (workouts only) */}
+          {activeTab === 'workouts' && (
+            <div className="flex gap-3">
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+              >
+                <option value="all">All Categories</option>
+                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+              </select>
+              <select
+                value={filterDifficulty}
+                onChange={(e) => setFilterDifficulty(e.target.value)}
+                className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+              >
+                <option value="all">All Difficulty</option>
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+              </select>
+            </div>
+          )}
+
+          {/* Sort buttons */}
+          <div className="flex items-center gap-3 bg-gray-800/50 rounded-lg px-3 py-1.5 border border-gray-700">
+            <span className="text-gray-500 text-xs uppercase tracking-wide">Sort:</span>
+            {activeTab === 'workouts' ? (
+              <>
+                <SortHeader label="Name" field="name" sort={workoutSort} onSort={(f) => setWorkoutSort(toggleSort(workoutSort, f))} />
+                <SortHeader label="Duration" field="duration" sort={workoutSort} onSort={(f) => setWorkoutSort(toggleSort(workoutSort, f))} />
+                <SortHeader label="Calories" field="caloriesBurned" sort={workoutSort} onSort={(f) => setWorkoutSort(toggleSort(workoutSort, f))} />
+              </>
+            ) : (
+              <>
+                <SortHeader label="Name" field="name" sort={exerciseSort} onSort={(f) => setExerciseSort(toggleSort(exerciseSort, f))} />
+                <SortHeader label="Sets" field="sets" sort={exerciseSort} onSort={(f) => setExerciseSort(toggleSort(exerciseSort, f))} />
+                <SortHeader label="Reps" field="reps" sort={exerciseSort} onSort={(f) => setExerciseSort(toggleSort(exerciseSort, f))} />
+              </>
+            )}
+          </div>
+
+          {/* Export buttons */}
+          <ExportButtons
+            data={(activeTab === 'workouts' ? sortedWorkouts : sortedExercises) as unknown as Record<string, unknown>[]}
+            filename={activeTab === 'workouts' ? 'workouts' : 'exercises'}
+          />
+        </div>
+
+        {/* Bulk actions bar */}
+        {activeTab === 'workouts' && (
+          <BulkActions
+            selectedCount={selectedWorkoutIds.size}
+            totalCount={paginatedWorkouts.length}
+            onSelectAll={() => setSelectedWorkoutIds(new Set(sortedWorkouts.map(w => w.id)))}
+            onDeselectAll={() => setSelectedWorkoutIds(new Set())}
+            onBulkDelete={() => setShowBulkDeleteConfirm(true)}
+            onBulkExport={handleBulkExport}
+          />
+        )}
+        {activeTab === 'exercises' && (
+          <BulkActions
+            selectedCount={selectedExerciseIds.size}
+            totalCount={paginatedExercises.length}
+            onSelectAll={() => setSelectedExerciseIds(new Set(sortedExercises.map(e => e.id)))}
+            onDeselectAll={() => setSelectedExerciseIds(new Set())}
+            onBulkDelete={() => setShowBulkDeleteConfirm(true)}
+            onBulkExport={handleBulkExport}
+          />
         )}
 
+        {/* Content */}
         {loading ? (
-          <div className="text-center text-gray-400 py-12">Loading...</div>
+          <GridSkeleton count={6} />
         ) : activeTab === 'workouts' ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredWorkouts.map((workout) => (
-              <div key={workout.id} onClick={() => handleViewWorkout(workout)} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 hover:border-gray-500 hover:bg-gray-700/50 transition-all cursor-pointer">
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="text-lg font-semibold text-white">{workout.name}</h3>
-                  <div className="flex gap-2">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${workout.creationType === 'ai' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                      {workout.creationType === 'ai' ? '✨ AI' : '✏️ Manual'}
-                    </span>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getDifficultyColor(workout.difficulty)}`}>{workout.difficulty}</span>
+          <>
+            {paginatedWorkouts.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-gray-400 text-lg">No workouts found</p>
+                <p className="text-gray-500 text-sm mt-2">Try adjusting your search or filters</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {paginatedWorkouts.map((workout) => (
+                  <div key={workout.id} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 hover:border-gray-500 hover:bg-gray-700/50 transition-all cursor-pointer relative group">
+                    {/* Checkbox */}
+                    <div className="absolute top-3 left-3 z-10" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedWorkoutIds.has(workout.id)}
+                        onChange={() => toggleWorkoutSelection(workout.id)}
+                        className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-green-600 focus:ring-green-500 cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Card body - clickable for detail modal */}
+                    <div onClick={() => handleViewWorkout(workout)} className="pl-5">
+                      <div className="flex justify-between items-start mb-3">
+                        <h3 className="text-lg font-semibold text-white truncate pr-2">{workout.name}</h3>
+                        <div className="flex gap-1.5 flex-shrink-0">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${workout.creationType === 'ai' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            {workout.creationType === 'ai' ? 'AI' : 'Manual'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${getDifficultyColor(workout.difficulty)}`}>
+                            {workout.difficulty}
+                          </span>
+                        </div>
+                      </div>
+
+                      {workout.clientName && (
+                        <p className="text-green-400 text-sm mb-1">Client: {workout.clientName}</p>
+                      )}
+
+                      <p className="text-gray-400 text-sm mb-3 line-clamp-2">{workout.description}</p>
+
+                      <div className="flex gap-4 text-sm text-gray-400 mb-3">
+                        <span>Duration: {workout.duration} min</span>
+                        <span>Calories: {workout.caloriesBurned}</span>
+                      </div>
+
+                      {workout.category && (
+                        <p className="text-xs text-gray-500 mb-4">Category: {workout.category}</p>
+                      )}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2 pl-5">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEditWorkout(workout); }}
+                        className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteClick(workout.id, 'workout', workout.name); }}
+                        className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <p className="text-gray-400 text-sm mb-2">{workout.clientName && <span className="text-green-400">Client: {workout.clientName}</span>}</p>
-                <p className="text-gray-400 text-sm mb-4">{workout.description}</p>
-                <div className="flex gap-4 text-sm text-gray-400 mb-4">
-                  <span>⏱️ {workout.duration} min</span>
-                  <span>🔥 {workout.caloriesBurned} cal</span>
-                </div>
-                <p className="text-xs text-gray-500 mb-4">Category: {workout.category}</p>
-                <div className="flex gap-2">
-                  <button onClick={(e) => { e.stopPropagation(); handleEditWorkout(workout); }} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">Edit</button>
-                  <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(workout.id, 'workout', workout.name); }} className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm">Delete</button>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+
+            {/* Pagination */}
+            <Pagination
+              currentPage={workoutPage}
+              totalPages={workoutTotalPages}
+              totalItems={sortedWorkouts.length}
+              pageSize={workoutPageSize}
+              onPageChange={setWorkoutPage}
+              onPageSizeChange={(size) => { setWorkoutPageSize(size); setWorkoutPage(1); }}
+            />
+          </>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {exercises.map((exercise) => (
-              <div key={exercise.id} onClick={() => handleViewExercise(exercise)} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 hover:border-gray-500 hover:bg-gray-700/50 transition-all cursor-pointer">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-lg font-semibold text-white">{exercise.name}</h3>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${exercise.creationType === 'ai' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                    {exercise.creationType === 'ai' ? '✨ AI' : '✏️ Manual'}
-                  </span>
-                </div>
-                <p className="text-gray-400 text-sm mb-2">{exercise.clientName && <span className="text-green-400">Client: {exercise.clientName}</span>}</p>
-                <p className="text-gray-400 text-sm mb-3">{exercise.description}</p>
-                <div className="space-y-1 text-sm text-gray-400 mb-4">
-                  <p><span className="text-gray-500">Muscle:</span> {exercise.muscleGroup}</p>
-                  <p><span className="text-gray-500">Equipment:</span> {exercise.equipment}</p>
-                  <p><span className="text-gray-500">Sets/Reps:</span> {exercise.sets} x {exercise.reps}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={(e) => { e.stopPropagation(); handleEditExercise(exercise); }} className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">Edit</button>
-                  <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(exercise.id, 'exercise', exercise.name); }} className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm">Delete</button>
-                </div>
+          <>
+            {paginatedExercises.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-gray-400 text-lg">No exercises found</p>
+                <p className="text-gray-500 text-sm mt-2">Try adjusting your search</p>
               </div>
-            ))}
-          </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {paginatedExercises.map((exercise) => (
+                  <div key={exercise.id} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 hover:border-gray-500 hover:bg-gray-700/50 transition-all cursor-pointer relative group">
+                    {/* Checkbox */}
+                    <div className="absolute top-3 left-3 z-10" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedExerciseIds.has(exercise.id)}
+                        onChange={() => toggleExerciseSelection(exercise.id)}
+                        className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-green-600 focus:ring-green-500 cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Card body - clickable for detail modal */}
+                    <div onClick={() => handleViewExercise(exercise)} className="pl-5">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="text-lg font-semibold text-white truncate pr-2">{exercise.name}</h3>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${exercise.creationType === 'ai' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                          {exercise.creationType === 'ai' ? 'AI' : 'Manual'}
+                        </span>
+                      </div>
+
+                      {exercise.clientName && (
+                        <p className="text-green-400 text-sm mb-1">Client: {exercise.clientName}</p>
+                      )}
+
+                      <p className="text-gray-400 text-sm mb-3 line-clamp-2">{exercise.description}</p>
+
+                      <div className="space-y-1 text-sm text-gray-400 mb-4">
+                        <p><span className="text-gray-500">Muscle:</span> {exercise.muscleGroup}</p>
+                        <p><span className="text-gray-500">Equipment:</span> {exercise.equipment}</p>
+                        <p><span className="text-gray-500">Sets x Reps:</span> {exercise.sets} x {exercise.reps}</p>
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2 pl-5">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEditExercise(exercise); }}
+                        className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteClick(exercise.id, 'exercise', exercise.name); }}
+                        className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Pagination */}
+            <Pagination
+              currentPage={exercisePage}
+              totalPages={exerciseTotalPages}
+              totalItems={sortedExercises.length}
+              pageSize={exercisePageSize}
+              onPageChange={setExercisePage}
+              onPageSizeChange={(size) => { setExercisePageSize(size); setExercisePage(1); }}
+            />
+          </>
         )}
       </div>
 
-      {/* View Workout/Exercise Modal */}
+      {/* ========== View/Detail Modal ========== */}
       {showViewModal && (viewingWorkout || viewingExercise) && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -393,10 +755,22 @@ export default function FitnessPage() {
               <div className="space-y-4">
                 <div className="p-4 bg-green-500/10 rounded-lg border border-green-500/20">
                   <h3 className="text-xl font-bold text-white mb-1">{viewingWorkout.name}</h3>
-                  <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getDifficultyColor(viewingWorkout.difficulty)}`}>
-                    {viewingWorkout.difficulty}
-                  </span>
+                  <div className="flex gap-2 items-center">
+                    <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getDifficultyColor(viewingWorkout.difficulty)}`}>
+                      {viewingWorkout.difficulty}
+                    </span>
+                    <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${viewingWorkout.creationType === 'ai' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                      {viewingWorkout.creationType === 'ai' ? 'AI Generated' : 'Manual'}
+                    </span>
+                  </div>
                 </div>
+
+                {viewingWorkout.clientName && (
+                  <div className="p-3 bg-gray-700/50 rounded-lg">
+                    <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Client</p>
+                    <p className="text-green-400 font-medium">{viewingWorkout.clientName}</p>
+                  </div>
+                )}
 
                 <p className="text-gray-300">{viewingWorkout.description}</p>
 
@@ -413,7 +787,7 @@ export default function FitnessPage() {
 
                 <div className="p-3 bg-gray-700/50 rounded-lg">
                   <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Category</p>
-                  <p className="text-white font-medium">{viewingWorkout.category}</p>
+                  <p className="text-white font-medium">{viewingWorkout.category || 'N/A'}</p>
                 </div>
 
                 <div className="p-3 bg-gray-700/50 rounded-lg">
@@ -421,9 +795,22 @@ export default function FitnessPage() {
                   <p className="text-white whitespace-pre-line">{viewingWorkout.exercises || 'No exercises listed'}</p>
                 </div>
 
+                {viewingWorkout.imageUrl && (
+                  <div className="p-3 bg-gray-700/50 rounded-lg">
+                    <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Image URL</p>
+                    <p className="text-blue-400 text-sm break-all">{viewingWorkout.imageUrl}</p>
+                  </div>
+                )}
+
+                <div className="p-3 bg-gray-700/50 rounded-lg">
+                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Created</p>
+                  <p className="text-white text-sm">{viewingWorkout.createdAt ? new Date(viewingWorkout.createdAt).toLocaleDateString() : 'N/A'}</p>
+                </div>
+
                 <div className="flex gap-3 mt-6">
-                  <button onClick={() => setShowViewModal(false)} className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600">Close</button>
-                  <button onClick={() => { setShowViewModal(false); handleEditWorkout(viewingWorkout); }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Edit</button>
+                  <button onClick={() => setShowViewModal(false)} className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors">Close</button>
+                  <button onClick={() => { setShowViewModal(false); handleEditWorkout(viewingWorkout); }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Edit</button>
+                  <button onClick={() => { handleDeleteClick(viewingWorkout.id, 'workout', viewingWorkout.name); }} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Delete</button>
                 </div>
               </div>
             )}
@@ -432,8 +819,20 @@ export default function FitnessPage() {
               <div className="space-y-4">
                 <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
                   <h3 className="text-xl font-bold text-white mb-1">{viewingExercise.name}</h3>
-                  <p className="text-blue-400">{viewingExercise.muscleGroup}</p>
+                  <div className="flex gap-2 items-center">
+                    <p className="text-blue-400">{viewingExercise.muscleGroup}</p>
+                    <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${viewingExercise.creationType === 'ai' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                      {viewingExercise.creationType === 'ai' ? 'AI Generated' : 'Manual'}
+                    </span>
+                  </div>
                 </div>
+
+                {viewingExercise.clientName && (
+                  <div className="p-3 bg-gray-700/50 rounded-lg">
+                    <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Client</p>
+                    <p className="text-green-400 font-medium">{viewingExercise.clientName}</p>
+                  </div>
+                )}
 
                 <p className="text-gray-300">{viewingExercise.description}</p>
 
@@ -462,9 +861,22 @@ export default function FitnessPage() {
                   <p className="text-white whitespace-pre-line">{viewingExercise.instructions || 'No instructions provided'}</p>
                 </div>
 
+                {viewingExercise.videoUrl && (
+                  <div className="p-3 bg-gray-700/50 rounded-lg">
+                    <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Video URL</p>
+                    <p className="text-blue-400 text-sm break-all">{viewingExercise.videoUrl}</p>
+                  </div>
+                )}
+
+                <div className="p-3 bg-gray-700/50 rounded-lg">
+                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Created</p>
+                  <p className="text-white text-sm">{viewingExercise.createdAt ? new Date(viewingExercise.createdAt).toLocaleDateString() : 'N/A'}</p>
+                </div>
+
                 <div className="flex gap-3 mt-6">
-                  <button onClick={() => setShowViewModal(false)} className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600">Close</button>
-                  <button onClick={() => { setShowViewModal(false); handleEditExercise(viewingExercise); }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Edit</button>
+                  <button onClick={() => setShowViewModal(false)} className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors">Close</button>
+                  <button onClick={() => { setShowViewModal(false); handleEditExercise(viewingExercise); }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Edit</button>
+                  <button onClick={() => { handleDeleteClick(viewingExercise.id, 'exercise', viewingExercise.name); }} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Delete</button>
                 </div>
               </div>
             )}
@@ -472,7 +884,7 @@ export default function FitnessPage() {
         </div>
       )}
 
-      {/* Edit/Add Modal */}
+      {/* ========== Edit/Add Modal ========== */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -494,7 +906,7 @@ export default function FitnessPage() {
                     Generating...
                   </>
                 ) : (
-                  <>✨ Generate with AI</>
+                  <>Generate with AI</>
                 )}
               </button>
             </div>
@@ -503,15 +915,26 @@ export default function FitnessPage() {
               <form onSubmit={handleWorkoutSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Client *</label>
-                  <select required value={workoutForm.clientId} onChange={(e) => handleWorkoutClientChange(e.target.value)} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white">
+                  <select
+                    value={workoutForm.clientId}
+                    onChange={(e) => handleWorkoutClientChange(e.target.value)}
+                    className={`w-full px-3 py-2 bg-gray-700 border rounded text-white ${formErrors.clientId ? 'border-red-500' : 'border-gray-600'}`}
+                  >
                     <option value="">Select Client</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
+                  {formErrors.clientId && <p className="text-xs text-red-400 mt-1">{formErrors.clientId}</p>}
                   {editingItem && <p className="text-xs text-yellow-400 mt-1">Editing existing {workoutForm.creationType} entry for this client</p>}
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Name *</label>
-                  <input type="text" required value={workoutForm.name} onChange={(e) => setWorkoutForm({ ...workoutForm, name: e.target.value })} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white" />
+                  <input
+                    type="text"
+                    value={workoutForm.name}
+                    onChange={(e) => { setWorkoutForm({ ...workoutForm, name: e.target.value }); if (formErrors.name) setFormErrors(prev => { const n = { ...prev }; delete n.name; return n; }); }}
+                    className={`w-full px-3 py-2 bg-gray-700 border rounded text-white ${formErrors.name ? 'border-red-500' : 'border-gray-600'}`}
+                  />
+                  {formErrors.name && <p className="text-xs text-red-400 mt-1">{formErrors.name}</p>}
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Description</label>
@@ -546,23 +969,34 @@ export default function FitnessPage() {
                   <textarea value={workoutForm.exercises} onChange={(e) => setWorkoutForm({ ...workoutForm, exercises: e.target.value })} rows={3} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white" placeholder="List exercises..." />
                 </div>
                 <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600">Cancel</button>
-                  <button type="submit" className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">{editingItem ? 'Update' : 'Create'}</button>
+                  <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors">Cancel</button>
+                  <button type="submit" className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors">{editingItem ? 'Update' : 'Create'}</button>
                 </div>
               </form>
             ) : (
               <form onSubmit={handleExerciseSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Client *</label>
-                  <select required value={exerciseForm.clientId} onChange={(e) => handleExerciseClientChange(e.target.value)} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white">
+                  <select
+                    value={exerciseForm.clientId}
+                    onChange={(e) => handleExerciseClientChange(e.target.value)}
+                    className={`w-full px-3 py-2 bg-gray-700 border rounded text-white ${formErrors.clientId ? 'border-red-500' : 'border-gray-600'}`}
+                  >
                     <option value="">Select Client</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
+                  {formErrors.clientId && <p className="text-xs text-red-400 mt-1">{formErrors.clientId}</p>}
                   {editingItem && <p className="text-xs text-yellow-400 mt-1">Editing existing {exerciseForm.creationType} entry for this client</p>}
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Name *</label>
-                  <input type="text" required value={exerciseForm.name} onChange={(e) => setExerciseForm({ ...exerciseForm, name: e.target.value })} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white" />
+                  <input
+                    type="text"
+                    value={exerciseForm.name}
+                    onChange={(e) => { setExerciseForm({ ...exerciseForm, name: e.target.value }); if (formErrors.name) setFormErrors(prev => { const n = { ...prev }; delete n.name; return n; }); }}
+                    className={`w-full px-3 py-2 bg-gray-700 border rounded text-white ${formErrors.name ? 'border-red-500' : 'border-gray-600'}`}
+                  />
+                  {formErrors.name && <p className="text-xs text-red-400 mt-1">{formErrors.name}</p>}
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Description</label>
@@ -597,8 +1031,8 @@ export default function FitnessPage() {
                   <textarea value={exerciseForm.instructions} onChange={(e) => setExerciseForm({ ...exerciseForm, instructions: e.target.value })} rows={3} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white" />
                 </div>
                 <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600">Cancel</button>
-                  <button type="submit" className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">{editingItem ? 'Update' : 'Create'}</button>
+                  <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors">Cancel</button>
+                  <button type="submit" className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors">{editingItem ? 'Update' : 'Create'}</button>
                 </div>
               </form>
             )}
@@ -606,38 +1040,29 @@ export default function FitnessPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && deletingItem && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-sm">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Delete {deletingItem.type}?</h3>
-              <p className="text-gray-400 mb-6">
-                Are you sure you want to delete <span className="text-white font-medium">"{deletingItem.name}"</span>? This action cannot be undone.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => { setShowDeleteModal(false); setDeletingItem(null); }}
-                  className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteConfirm}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ========== Delete Confirmation Dialog ========== */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title={`Delete ${deletingItem?.type === 'workout' ? 'Workout' : 'Exercise'}?`}
+        message={`Are you sure you want to delete "${deletingItem?.name || ''}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        type="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => { setShowDeleteConfirm(false); setDeletingItem(null); }}
+      />
+
+      {/* ========== Bulk Delete Confirmation Dialog ========== */}
+      <ConfirmDialog
+        isOpen={showBulkDeleteConfirm}
+        title={`Delete ${activeTab === 'workouts' ? selectedWorkoutIds.size : selectedExerciseIds.size} item(s)?`}
+        message="Are you sure you want to delete all selected items? This action cannot be undone."
+        confirmLabel="Delete All"
+        cancelLabel="Cancel"
+        type="danger"
+        onConfirm={handleBulkDeleteConfirm}
+        onCancel={() => setShowBulkDeleteConfirm(false)}
+      />
     </div>
   );
 }

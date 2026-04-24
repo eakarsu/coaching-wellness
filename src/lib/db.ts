@@ -16,6 +16,52 @@ export function getDb(): Database.Database {
 export function initializeDb(): void {
   const database = getDb();
 
+  // Users table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      firstName TEXT,
+      lastName TEXT,
+      role TEXT DEFAULT 'viewer',
+      avatar TEXT,
+      phone TEXT,
+      isActive INTEGER DEFAULT 1,
+      lastLogin TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Roles table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS roles (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      permissions TEXT,
+      isDefault INTEGER DEFAULT 0,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Notifications table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      userId TEXT,
+      title TEXT NOT NULL,
+      message TEXT,
+      type TEXT DEFAULT 'info',
+      isRead INTEGER DEFAULT 0,
+      link TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (userId) REFERENCES users(id)
+    )
+  `);
+
   // Clients table
   database.exec(`
     CREATE TABLE IF NOT EXISTS clients (
@@ -49,21 +95,15 @@ export function initializeDb(): void {
       caloriesBurned INTEGER,
       exercises TEXT,
       imageUrl TEXT,
+      creationType TEXT DEFAULT 'manual',
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (clientId) REFERENCES clients(id)
     )
   `);
 
-  // Add clientId and clientName columns to workouts if they don't exist
-  try {
-    database.exec(`ALTER TABLE workouts ADD COLUMN clientId TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    database.exec(`ALTER TABLE workouts ADD COLUMN clientName TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    database.exec(`ALTER TABLE workouts ADD COLUMN creationType TEXT DEFAULT 'manual'`);
-  } catch (e) { /* Column already exists */ }
+  try { database.exec(`ALTER TABLE workouts ADD COLUMN clientId TEXT`); } catch (e) { /* exists */ }
+  try { database.exec(`ALTER TABLE workouts ADD COLUMN clientName TEXT`); } catch (e) { /* exists */ }
+  try { database.exec(`ALTER TABLE workouts ADD COLUMN creationType TEXT DEFAULT 'manual'`); } catch (e) { /* exists */ }
 
   // Exercises table
   database.exec(`
@@ -80,21 +120,15 @@ export function initializeDb(): void {
       reps INTEGER,
       restTime INTEGER,
       videoUrl TEXT,
+      creationType TEXT DEFAULT 'manual',
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (clientId) REFERENCES clients(id)
     )
   `);
 
-  // Add clientId and clientName columns to exercises if they don't exist
-  try {
-    database.exec(`ALTER TABLE exercises ADD COLUMN clientId TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    database.exec(`ALTER TABLE exercises ADD COLUMN clientName TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    database.exec(`ALTER TABLE exercises ADD COLUMN creationType TEXT DEFAULT 'manual'`);
-  } catch (e) { /* Column already exists */ }
+  try { database.exec(`ALTER TABLE exercises ADD COLUMN clientId TEXT`); } catch (e) { /* exists */ }
+  try { database.exec(`ALTER TABLE exercises ADD COLUMN clientName TEXT`); } catch (e) { /* exists */ }
+  try { database.exec(`ALTER TABLE exercises ADD COLUMN creationType TEXT DEFAULT 'manual'`); } catch (e) { /* exists */ }
 
   // Meal Plans table
   database.exec(`
@@ -112,21 +146,15 @@ export function initializeDb(): void {
       meals TEXT,
       duration TEXT,
       targetGoal TEXT,
+      creationType TEXT DEFAULT 'manual',
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (clientId) REFERENCES clients(id)
     )
   `);
 
-  // Add clientId and clientName columns if they don't exist (for existing databases)
-  try {
-    database.exec(`ALTER TABLE meal_plans ADD COLUMN clientId TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    database.exec(`ALTER TABLE meal_plans ADD COLUMN clientName TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    database.exec(`ALTER TABLE meal_plans ADD COLUMN creationType TEXT DEFAULT 'manual'`);
-  } catch (e) { /* Column already exists */ }
+  try { database.exec(`ALTER TABLE meal_plans ADD COLUMN clientId TEXT`); } catch (e) { /* exists */ }
+  try { database.exec(`ALTER TABLE meal_plans ADD COLUMN clientName TEXT`); } catch (e) { /* exists */ }
+  try { database.exec(`ALTER TABLE meal_plans ADD COLUMN creationType TEXT DEFAULT 'manual'`); } catch (e) { /* exists */ }
 
   // Recipes table
   database.exec(`
@@ -147,21 +175,15 @@ export function initializeDb(): void {
       cookTime INTEGER,
       servings INTEGER,
       imageUrl TEXT,
+      creationType TEXT DEFAULT 'manual',
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (clientId) REFERENCES clients(id)
     )
   `);
 
-  // Add clientId and clientName columns to recipes if they don't exist
-  try {
-    database.exec(`ALTER TABLE recipes ADD COLUMN clientId TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    database.exec(`ALTER TABLE recipes ADD COLUMN clientName TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    database.exec(`ALTER TABLE recipes ADD COLUMN creationType TEXT DEFAULT 'manual'`);
-  } catch (e) { /* Column already exists */ }
+  try { database.exec(`ALTER TABLE recipes ADD COLUMN clientId TEXT`); } catch (e) { /* exists */ }
+  try { database.exec(`ALTER TABLE recipes ADD COLUMN clientName TEXT`); } catch (e) { /* exists */ }
+  try { database.exec(`ALTER TABLE recipes ADD COLUMN creationType TEXT DEFAULT 'manual'`); } catch (e) { /* exists */ }
 
   // Wellness Goals table
   database.exec(`
@@ -179,16 +201,14 @@ export function initializeDb(): void {
       targetDate TEXT,
       status TEXT DEFAULT 'in_progress',
       notes TEXT,
+      creationType TEXT DEFAULT 'manual',
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (clientId) REFERENCES clients(id)
     )
   `);
 
-  // Add creationType column to wellness_goals if it doesn't exist
-  try {
-    database.exec(`ALTER TABLE wellness_goals ADD COLUMN creationType TEXT DEFAULT 'manual'`);
-  } catch (e) { /* Column already exists */ }
+  try { database.exec(`ALTER TABLE wellness_goals ADD COLUMN creationType TEXT DEFAULT 'manual'`); } catch (e) { /* exists */ }
 
   // Appointments table
   database.exec(`
@@ -204,15 +224,13 @@ export function initializeDb(): void {
       status TEXT DEFAULT 'scheduled',
       notes TEXT,
       location TEXT,
+      creationType TEXT DEFAULT 'manual',
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (clientId) REFERENCES clients(id)
     )
   `);
 
-  // Add creationType column to appointments if it doesn't exist
-  try {
-    database.exec(`ALTER TABLE appointments ADD COLUMN creationType TEXT DEFAULT 'manual'`);
-  } catch (e) { /* Column already exists */ }
+  try { database.exec(`ALTER TABLE appointments ADD COLUMN creationType TEXT DEFAULT 'manual'`); } catch (e) { /* exists */ }
 
   // Progress Logs table
   database.exec(`
@@ -229,15 +247,13 @@ export function initializeDb(): void {
       energyLevel INTEGER,
       stressLevel INTEGER,
       notes TEXT,
+      creationType TEXT DEFAULT 'manual',
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (clientId) REFERENCES clients(id)
     )
   `);
 
-  // Add creationType column to progress_logs if it doesn't exist
-  try {
-    database.exec(`ALTER TABLE progress_logs ADD COLUMN creationType TEXT DEFAULT 'manual'`);
-  } catch (e) { /* Column already exists */ }
+  try { database.exec(`ALTER TABLE progress_logs ADD COLUMN creationType TEXT DEFAULT 'manual'`); } catch (e) { /* exists */ }
 
   // Coaches table
   database.exec(`

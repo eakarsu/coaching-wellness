@@ -151,3 +151,57 @@ export interface Coach {
   imageUrl: string;
   createdAt: string;
 }
+
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  role: 'admin' | 'coach' | 'client' | 'viewer';
+  avatar: string;
+  phone: string;
+  isActive: boolean;
+  lastLogin: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  isRead: boolean;
+  link: string;
+  createdAt: string;
+}
+
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+  duration?: number;
+}
+
+export interface PaginationState {
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface SortState {
+  field: string;
+  direction: 'asc' | 'desc';
+}
