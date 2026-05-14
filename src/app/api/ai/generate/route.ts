@@ -7,8 +7,17 @@ export async function POST(request: NextRequest) {
   try {
     const { type, context } = await request.json();
 
+    // Apply pass 4: opt-in 503 mode for new AI helpers (smartGoal/planDiff/adherence)
+    // The legacy types keep their graceful sample-data fallback for backward compat.
+    const NEW_TYPES = new Set(['smartGoal', 'planDiff', 'adherencePrediction']);
     if (!OPENROUTER_API_KEY) {
-      // Return sample data if no API key
+      if (NEW_TYPES.has(type)) {
+        return NextResponse.json(
+          { error: 'AI provider not configured (OPENROUTER_API_KEY missing).' },
+          { status: 503 }
+        );
+      }
+      // Return sample data if no API key (legacy behavior)
       return NextResponse.json(getSampleData(type, context));
     }
 
@@ -73,6 +82,47 @@ function getPromptForType(type: string, context: Record<string, string>): string
       return `Generate a sample client profile in JSON format with: name, email, phone, age (number), gender (Male/Female/Other), goals (string with fitness goals), healthConditions (string or "None"), status (active), notes.`;
     case 'progress':
       return `Generate a progress log entry ${clientInfo} in JSON format with: weight (number in lbs), bodyFat (number percentage), muscleMass (number in lbs), waterIntake (number in liters), sleepHours (number), energyLevel (number 1-10), stressLevel (number 1-10), notes.`;
+    case 'smartGoal':
+      return `Generate a SMART wellness goal ${clientInfo} with milestone forecasting. Respond ONLY with JSON:
+{
+  "title": "string",
+  "specific": "string",
+  "measurable": {"metric": "string", "target": 0, "unit": "string"},
+  "achievable_rationale": "string",
+  "relevant": "string",
+  "time_bound": {"start_date": "YYYY-MM-DD", "target_date": "YYYY-MM-DD", "weeks": 0},
+  "milestones": [{"week": 0, "target": "string", "metric_value": 0, "checkpoint": "string"}],
+  "risk_factors": ["string"],
+  "success_indicators": ["string"]
+}`;
+    case 'planDiff':
+      const planA = context.planA || 'Plan A not provided';
+      const planB = context.planB || 'Plan B not provided';
+      return `Compare two wellness plans and propose tweaks. ${clientInfo}
+PLAN A: ${planA}
+PLAN B: ${planB}
+Respond ONLY with JSON:
+{
+  "summary": "string",
+  "differences": [{"aspect": "string", "plan_a": "string", "plan_b": "string", "recommendation": "string"}],
+  "merged_plan_suggestion": "string",
+  "tweaks": [{"target_plan": "A|B", "tweak": "string", "rationale": "string"}],
+  "risk_notes": ["string"]
+}`;
+    case 'adherencePrediction':
+      const history = context.history || 'no history provided';
+      return `Predict the client's likelihood of adhering to their current wellness program. ${clientInfo}
+RECENT HISTORY: ${history}
+Respond ONLY with JSON:
+{
+  "adherence_probability": 0,
+  "confidence": "low|medium|high",
+  "drop_off_risk": "low|medium|high",
+  "early_warning_signals": ["string"],
+  "retention_actions": [{"action": "string", "priority": "low|medium|high", "expected_lift": "string"}],
+  "recommended_check_in_cadence": "string",
+  "summary": "string"
+}`;
     default:
       return 'Generate sample wellness data in JSON format.';
   }

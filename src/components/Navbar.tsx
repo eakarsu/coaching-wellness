@@ -11,6 +11,7 @@ const navItems = [
   { href: '/nutrition', label: 'Nutrition', icon: '🥗' },
   { href: '/wellness', label: 'Wellness', icon: '🎯' },
   { href: '/appointments', label: 'Appointments', icon: '📅' },
+  { href: '/ai-insights', label: 'AI Insights', icon: '🧠' },
   { href: '/admin', label: 'Admin', icon: '⚙️' },
 ];
 
