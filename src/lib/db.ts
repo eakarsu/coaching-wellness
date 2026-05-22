@@ -271,6 +271,34 @@ export function initializeDb(): void {
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Apply pass 7: coach-match audit log + AI advice audit log.
+  // Both are additive, CREATE IF NOT EXISTS — safe re-run, no breaking change.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS coach_match_history_v7 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      clientId TEXT,
+      goals TEXT,
+      conditions TEXT,
+      topN INTEGER,
+      candidateCount INTEGER,
+      topCoachId TEXT,
+      topScore REAL,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS ai_advice_log_v7 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      endpoint TEXT NOT NULL,
+      type TEXT,
+      clientName TEXT,
+      not_medical_advice INTEGER DEFAULT 1,
+      requestSummary TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 }
 
 export function closeDb(): void {

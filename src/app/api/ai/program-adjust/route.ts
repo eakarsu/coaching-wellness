@@ -34,7 +34,15 @@ export async function POST(req: NextRequest) {
 
     const data: any = await r.json();
     const content = data?.choices?.[0]?.message?.content || '';
-    return NextResponse.json({ type: 'program-adjust', result: parseJSON(content) || { raw: content }, model: data?.model });
+    // Apply pass 7: health-domain disclaimer.
+    return NextResponse.json({
+      type: 'program-adjust',
+      result: parseJSON(content) || { raw: content },
+      model: data?.model,
+      not_medical_advice: true,
+      disclaimer:
+        'AI-generated wellness guidance — not medical advice. Consult a qualified healthcare professional before making medical decisions.',
+    });
   } catch (e: any) {
     console.error('program-adjust error:', e.message);
     return NextResponse.json({ error: e.message }, { status: 500 });

@@ -76,20 +76,27 @@ Return JSON only with shape:
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
+    // Apply pass 7: attach not_medical_advice disclaimer (health-domain output).
+    const decorate = (obj: any) => ({
+      ...obj,
+      not_medical_advice: true,
+      disclaimer:
+        'AI-generated wellness guidance — not medical advice. Consult a qualified healthcare professional before making medical decisions.',
+    });
     try {
       const parsed = JSON.parse(content);
-      return NextResponse.json(parsed);
+      return NextResponse.json(decorate(parsed));
     } catch {
       // 3-strategy parse: locate JSON block
       const m = content.match(/\{[\s\S]*\}/);
       if (m) {
         try {
-          return NextResponse.json(JSON.parse(m[0]));
+          return NextResponse.json(decorate(JSON.parse(m[0])));
         } catch {
           /* fall through */
         }
       }
-      return NextResponse.json({ raw: content });
+      return NextResponse.json(decorate({ raw: content }));
     }
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'failed' }, { status: 500 });

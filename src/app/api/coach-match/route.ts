@@ -106,6 +106,37 @@ export async function POST(req: NextRequest) {
     scored.sort((a, b) => b.score - a.score);
     const topResults = scored.slice(0, top);
 
+    // Apply pass 7: persist match history (defensive — ignore if table missing).
+    try {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS coach_match_history_v7 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clientId TEXT,
+          goals TEXT,
+          conditions TEXT,
+          topN INTEGER,
+          candidateCount INTEGER,
+          topCoachId TEXT,
+          topScore REAL,
+          createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+        )`
+      );
+      db.prepare(
+        `INSERT INTO coach_match_history_v7 (clientId, goals, conditions, topN, candidateCount, topCoachId, topScore)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        client_id || null,
+        clientGoals || null,
+        clientCond || null,
+        top,
+        topResults.length,
+        topResults[0]?.coach_id || null,
+        topResults[0]?.score ?? null
+      );
+    } catch (_) {
+      /* non-fatal */
+    }
+
     return NextResponse.json({
       client_tokens: clientTokens,
       candidates: topResults,

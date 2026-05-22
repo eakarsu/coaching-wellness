@@ -10,8 +10,11 @@ const navItems = [
   { href: '/fitness', label: 'Fitness', icon: '💪' },
   { href: '/nutrition', label: 'Nutrition', icon: '🥗' },
   { href: '/wellness', label: 'Wellness', icon: '🎯' },
+  { href: '/recovery-readiness', label: 'Recovery', icon: '🧘' },
   { href: '/appointments', label: 'Appointments', icon: '📅' },
   { href: '/ai-insights', label: 'AI Insights', icon: '🧠' },
+  { href: '/joint-plan', label: 'Joint Plan', icon: '🧬' },
+  { href: '/coach-match', label: 'Coach Match', icon: '🤝' },
   { href: '/admin', label: 'Admin', icon: '⚙️' },
 ];
 

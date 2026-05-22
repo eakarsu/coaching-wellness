@@ -18,7 +18,24 @@ export async function POST(request: NextRequest) {
         );
       }
       // Return sample data if no API key (legacy behavior)
-      return NextResponse.json(getSampleData(type, context));
+      const sample = getSampleData(type, context);
+      const HEALTH_TYPES_FALLBACK = new Set([
+        'mealPlan',
+        'recipe',
+        'workout',
+        'exercise',
+        'goal',
+        'progress',
+      ]);
+      if (sample && typeof sample === 'object' && !Array.isArray(sample) && HEALTH_TYPES_FALLBACK.has(type)) {
+        return NextResponse.json({
+          ...(sample as Record<string, unknown>),
+          not_medical_advice: true,
+          disclaimer:
+            'AI-generated wellness guidance — not medical advice. Consult a qualified healthcare professional before making medical decisions.',
+        });
+      }
+      return NextResponse.json(sample);
     }
 
     const prompt = getPromptForType(type, context);
@@ -44,17 +61,58 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       console.error('OpenRouter API error:', await response.text());
-      return NextResponse.json(getSampleData(type, context));
+      const sample = getSampleData(type, context);
+      const HEALTH_TYPES_FALLBACK = new Set([
+        'mealPlan',
+        'recipe',
+        'workout',
+        'exercise',
+        'goal',
+        'progress',
+      ]);
+      if (sample && typeof sample === 'object' && !Array.isArray(sample) && HEALTH_TYPES_FALLBACK.has(type)) {
+        return NextResponse.json({
+          ...(sample as Record<string, unknown>),
+          not_medical_advice: true,
+          disclaimer:
+            'AI-generated wellness guidance — not medical advice. Consult a qualified healthcare professional before making medical decisions.',
+        });
+      }
+      return NextResponse.json(sample);
     }
 
     const data = await response.json();
     const content = data.choices[0]?.message?.content;
 
+    // Apply pass 7: attach not_medical_advice disclaimer to health-domain outputs.
+    const HEALTH_TYPES = new Set([
+      'smartGoal',
+      'planDiff',
+      'adherencePrediction',
+      'mealPlan',
+      'recipe',
+      'workout',
+      'exercise',
+      'goal',
+      'progress',
+    ]);
+    const decorate = (obj: unknown) => {
+      if (obj && typeof obj === 'object' && !Array.isArray(obj) && HEALTH_TYPES.has(type)) {
+        return {
+          ...(obj as Record<string, unknown>),
+          not_medical_advice: true,
+          disclaimer:
+            'AI-generated wellness guidance — not medical advice. Consult a qualified healthcare professional before making medical decisions.',
+        };
+      }
+      return obj;
+    };
+
     try {
       const parsed = JSON.parse(content);
-      return NextResponse.json(parsed);
+      return NextResponse.json(decorate(parsed));
     } catch {
-      return NextResponse.json(getSampleData(type, context));
+      return NextResponse.json(decorate(getSampleData(type, context)));
     }
   } catch (error) {
     console.error('AI generation error:', error);

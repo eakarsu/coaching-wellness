@@ -56,3 +56,20 @@ These would each require product decisions about scope, success metrics, and whi
   - Joint nutrition+fitness plan generator — possible but out of cap-priority for this pass.
 - **Smoke test:** PASS — `npm run dev` (Next.js 16 turbopack); `POST /api/ai/generate {type:"smartGoal", ...}` with key set returns HTTP 200; restarted with empty `OPENROUTER_API_KEY` and same call returns HTTP 503 with `"AI provider not configured ..."`; legacy `type:"workout"` still returns sample data (HTTP 200) — backward compat preserved. Server cleaned up after.
 - **Files modified:** `src/app/api/ai/generate/route.ts`, `src/components/Navbar.tsx`, plus new `src/app/ai-insights/page.tsx`.
+
+## Apply pass 7 (full backlog implementation)
+
+- **Action:** IMPLEMENTED. Filled remaining gaps: backend endpoints from pass 5 (`/api/joint-plan`, `/api/coach-match`) had no frontend wiring; added pages. Added `not_medical_advice: true` + disclaimer to all health-domain AI outputs. Added two additive audit tables.
+- **Items addressed (unaddressed backlog):**
+  1. **Joint nutrition+fitness plan generator UI** — new `/joint-plan` page wires the existing `/api/joint-plan` endpoint (apply pass 5 backend, no UI before). Inputs: clientName, goals, healthConditions, weeks (1-24). Visual disclaimer banner.
+  2. **Coach-client matcher UI** — new `/coach-match` page wires existing `/api/coach-match`. Renders ranked candidates with score breakdown (goal/specialty/load/recency), plus raw-JSON `<details>` toggle. Inputs: client_id (or inline goals/conditions), topN.
+  3. **`not_medical_advice` disclaimer on health AI outputs** — added to `/api/ai/generate` (smartGoal, planDiff, adherencePrediction, mealPlan, recipe, workout, exercise, goal, progress — across LLM path, sample-data fallback, and upstream-error fallback), `/api/joint-plan`, `/api/ai/daily-checkin`, `/api/ai/program-adjust`. Each response now carries `not_medical_advice: true` plus a human-readable `disclaimer` string.
+  4. **Audit tables (migration)** — `src/lib/db.ts` `initializeDb()` adds `coach_match_history_v7` (clientId, goals, conditions, topN, candidateCount, topCoachId, topScore, createdAt) and `ai_advice_log_v7` (endpoint, type, clientName, not_medical_advice, requestSummary, createdAt). Both CREATE TABLE IF NOT EXISTS. Coach-match endpoint now persists each successful match.
+- **Skipped (per task constraints):**
+  - `/api/integrations/wearable`, `/api/integrations/email` — pure NEEDS-CREDS 503 stubs.
+  - Real medical advice generation, diagnostics, prescription logic — TOO-RISKY (advisory only).
+- **Pattern alignment:** Project is Next.js App Router, not Express. "Mount before 404 handler" pattern N/A; new routes use existing `src/app/api/.../route.ts` shape. New pages match `src/app/ai-insights/page.tsx` look-and-feel (gray-800 surfaces, indigo CTA, JSON result panel, optional `Authorization: Bearer` header from `localStorage.getItem('token')`). Navbar gets two new entries (`Joint Plan`, `Coach Match`).
+- **No new deps.** No breaking changes (legacy `/api/ai/generate` types still return sample data without key; new disclaimer fields are additive properties).
+- **Syntax check:** No `.js` files were modified. `npx tsc --noEmit` against project tsconfig passes (exit 0, no errors).
+- **Files modified:** `src/app/api/ai/generate/route.ts`, `src/app/api/joint-plan/route.ts`, `src/app/api/ai/daily-checkin/route.ts`, `src/app/api/ai/program-adjust/route.ts`, `src/app/api/coach-match/route.ts`, `src/lib/db.ts`, `src/components/Navbar.tsx`. New: `src/app/joint-plan/page.tsx`, `src/app/coach-match/page.tsx`.
+- **Status:** DONE.
