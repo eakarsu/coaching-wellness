@@ -2,6 +2,11 @@ import { getDb, initializeDb, closeDb } from './db';
 import { v4 as uuidv4 } from 'uuid';
 
 function seedDatabase() {
+  if (process.env.DESTRUCTIVE_DEMO_SEED_ACKNOWLEDGEMENT !== 'replace-all-data-with-demo-fixtures') {
+    throw new Error('Refusing destructive demo seed without explicit acknowledgement');
+  }
+  const demoPassword = process.env.DEMO_SEED_PASSWORD || '';
+  if (demoPassword.length < 12) throw new Error('DEMO_SEED_PASSWORD must contain at least 12 characters');
   console.log('Initializing database...');
   initializeDb();
 
@@ -53,21 +58,21 @@ function seedDatabase() {
   // ========== Seed Users (15 items) ==========
   console.log('Seeding users...');
   const users = [
-    { username: 'admin', email: 'admin@wellness.com', password: 'admin123', firstName: 'System', lastName: 'Administrator', role: 'admin', phone: '555-0001' },
-    { username: 'sarah.mitchell', email: 'sarah@wellness.com', password: 'coach123', firstName: 'Sarah', lastName: 'Mitchell', role: 'coach', phone: '555-0002' },
-    { username: 'mike.thompson', email: 'mike@wellness.com', password: 'coach123', firstName: 'Mike', lastName: 'Thompson', role: 'coach', phone: '555-0003' },
-    { username: 'emily.chen', email: 'emily@wellness.com', password: 'coach123', firstName: 'Emily', lastName: 'Chen', role: 'coach', phone: '555-0004' },
-    { username: 'john.smith', email: 'john@email.com', password: 'client123', firstName: 'John', lastName: 'Smith', role: 'client', phone: '555-0101' },
-    { username: 'mary.johnson', email: 'mary@email.com', password: 'client123', firstName: 'Mary', lastName: 'Johnson', role: 'client', phone: '555-0102' },
-    { username: 'robert.davis', email: 'robert@email.com', password: 'client123', firstName: 'Robert', lastName: 'Davis', role: 'client', phone: '555-0103' },
-    { username: 'patricia.w', email: 'patricia@email.com', password: 'client123', firstName: 'Patricia', lastName: 'Williams', role: 'client', phone: '555-0104' },
-    { username: 'james.r', email: 'james@wellness.com', password: 'coach123', firstName: 'James', lastName: 'Rodriguez', role: 'coach', phone: '555-0005' },
-    { username: 'lisa.a', email: 'lisa@wellness.com', password: 'coach123', firstName: 'Lisa', lastName: 'Anderson', role: 'coach', phone: '555-0006' },
-    { username: 'front.desk', email: 'desk@wellness.com', password: 'desk123', firstName: 'Front', lastName: 'Desk', role: 'viewer', phone: '555-0007' },
-    { username: 'data.analyst', email: 'analyst@wellness.com', password: 'analyst123', firstName: 'Data', lastName: 'Analyst', role: 'viewer', phone: '555-0008' },
-    { username: 'michael.b', email: 'michael@email.com', password: 'client123', firstName: 'Michael', lastName: 'Brown', role: 'client', phone: '555-0105' },
-    { username: 'jennifer.g', email: 'jennifer@email.com', password: 'client123', firstName: 'Jennifer', lastName: 'Garcia', role: 'client', phone: '555-0106' },
-    { username: 'manager1', email: 'manager@wellness.com', password: 'manager123', firstName: 'Tom', lastName: 'Manager', role: 'admin', phone: '555-0009' },
+    { username: 'admin', email: 'admin@wellness.com', password: demoPassword, firstName: 'System', lastName: 'Administrator', role: 'admin', phone: '555-0001' },
+    { username: 'sarah.mitchell', email: 'sarah@wellness.com', password: demoPassword, firstName: 'Sarah', lastName: 'Mitchell', role: 'coach', phone: '555-0002' },
+    { username: 'mike.thompson', email: 'mike@wellness.com', password: demoPassword, firstName: 'Mike', lastName: 'Thompson', role: 'coach', phone: '555-0003' },
+    { username: 'emily.chen', email: 'emily@wellness.com', password: demoPassword, firstName: 'Emily', lastName: 'Chen', role: 'coach', phone: '555-0004' },
+    { username: 'john.smith', email: 'john@email.com', password: demoPassword, firstName: 'John', lastName: 'Smith', role: 'client', phone: '555-0101' },
+    { username: 'mary.johnson', email: 'mary@email.com', password: demoPassword, firstName: 'Mary', lastName: 'Johnson', role: 'client', phone: '555-0102' },
+    { username: 'robert.davis', email: 'robert@email.com', password: demoPassword, firstName: 'Robert', lastName: 'Davis', role: 'client', phone: '555-0103' },
+    { username: 'patricia.w', email: 'patricia@email.com', password: demoPassword, firstName: 'Patricia', lastName: 'Williams', role: 'client', phone: '555-0104' },
+    { username: 'james.r', email: 'james@wellness.com', password: demoPassword, firstName: 'James', lastName: 'Rodriguez', role: 'coach', phone: '555-0005' },
+    { username: 'lisa.a', email: 'lisa@wellness.com', password: demoPassword, firstName: 'Lisa', lastName: 'Anderson', role: 'coach', phone: '555-0006' },
+    { username: 'front.desk', email: 'desk@wellness.com', password: demoPassword, firstName: 'Front', lastName: 'Desk', role: 'viewer', phone: '555-0007' },
+    { username: 'data.analyst', email: 'analyst@wellness.com', password: demoPassword, firstName: 'Data', lastName: 'Analyst', role: 'viewer', phone: '555-0008' },
+    { username: 'michael.b', email: 'michael@email.com', password: demoPassword, firstName: 'Michael', lastName: 'Brown', role: 'client', phone: '555-0105' },
+    { username: 'jennifer.g', email: 'jennifer@email.com', password: demoPassword, firstName: 'Jennifer', lastName: 'Garcia', role: 'client', phone: '555-0106' },
+    { username: 'manager1', email: 'manager@wellness.com', password: demoPassword, firstName: 'Tom', lastName: 'Manager', role: 'admin', phone: '555-0009' },
   ];
 
   const insertUser = db.prepare(`INSERT INTO users (id, username, email, password, firstName, lastName, role, phone, isActive, lastLogin, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now', '-' || ? || ' hours'), datetime('now'), datetime('now'))`);

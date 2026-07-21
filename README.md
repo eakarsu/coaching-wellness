@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Governed Wellness Operations
 
-## Getting Started
+A tenant-scoped wellness coaching workflow for members, coaches, and operations staff. The production path is deliberately narrow: readiness and consent, payment-backed enrollment, a human-authored plan, measurable goals, deterministic safety-aware check-ins, coach-reviewed adjustments, appointments, wearable provenance, consent revocation, and provider recovery.
 
-First, run the development server:
+This service supports non-medical wellness coaching. It does not diagnose, prescribe, replace a clinician, or provide emergency care.
+
+## Production architecture
+
+- Next.js UI and route handlers under `/api/v1/wellness`
+- PostgreSQL as the durable system of record
+- RS256 OIDC authorization-code flow with state and PKCE
+- Tenant and role checks on every governed operation (`member`, `coach`, `operator`)
+- Versioned consent and readiness evidence
+- Explicit enrollment state machine with optimistic version checks
+- Deterministic safety rules; no generative-AI decision path
+- Durable, idempotent provider jobs for billing, video, wearable, and notifications
+- Signed, replay-safe wearable and billing webhooks
+- Append-only audit events and recorded restore drills
+
+The previous SQLite, password-auth, generic-AI, mock-integration, and generated-gap routes remain in source for historical comparison but are quarantined by the production proxy. Set `ENABLE_LEGACY_DEMOS=1` only in a disposable non-production environment. They are not supported product surfaces.
+
+## Local verification
+
+Requirements: Node 20+, npm, and PostgreSQL 16+.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+createdb coaching_wellness_test
+TEST_DATABASE_URL=postgres:///coaching_wellness_test npm test
+npm run build
+npm audit --audit-level=moderate
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The integration test uses the exact database named by `TEST_DATABASE_URL`, truncates governed wellness tables, applies the migration twice, and must never target shared data.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Configuration and deployment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copy `.env.example` into your deployment secret/config system; never commit the resulting values. Generate the RS256 key outside the application and provide only the public key here. Provider bearer tokens, the OIDC client secret, and webhook HMAC secret belong in a secret manager.
 
-## Learn More
+```bash
+ALLOW_SCHEMA_MIGRATION=1 ./start.sh migrate
+./start.sh check
+./start.sh start
+```
 
-To learn more about Next.js, take a look at the following resources:
+Startup does not seed data, kill processes, mutate the filesystem, or run migrations. Schema changes require the explicit migration command and flag. The health endpoint is `/api/v1/wellness/health`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [RUNBOOK.md](RUNBOOK.md) for rollout, safety escalation, provider recovery, backup/restore, and incident procedures.

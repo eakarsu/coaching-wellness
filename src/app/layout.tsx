@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Wellness Coach Pro - Health & Wellness Coaching Platform",
-  description: "Complete health and wellness coaching platform for fitness, nutrition, and overall wellness management",
+  title: "Wellness Operations",
+  description: "Governed wellness enrollment, coaching, safety, and provider operations",
 };
 
 export default function RootLayout({

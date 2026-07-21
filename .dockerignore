@@ -1,0 +1,9 @@
+.git
+.github
+.next
+node_modules
+coverage
+.env*
+*.db*
+_AUDIT_NOTE.md
+_COMPLETENESS_REVIEW.md

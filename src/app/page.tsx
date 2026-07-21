@@ -1,369 +1,124 @@
 'use client';
 
-import Link from 'next/link';
-import { useState, useEffect, useMemo } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useToast } from '@/components/Toast';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { StatSkeleton, GridSkeleton } from '@/components/LoadingSkeleton';
 
-interface Stats {
-  clients: number;
-  workouts: number;
-  mealPlans: number;
-  appointments: number;
-}
+type Session = { subject: string; tenantId: string; role: 'member' | 'coach' | 'operator'; name: string };
+type Item = Record<string, unknown> & { id: string; enrollment_id?: string; state?: string; status?: string };
+type Workspace = {
+  enrollments: Item[]; plans: Item[]; goals: Item[]; checkIns: Item[]; alerts: Item[];
+  adjustments: Item[]; observations: Item[]; appointments: Item[]; jobs: Item[]; safetyBoundary: string;
+};
+type Coach = { coach_subject: string; specialties: string[]; capacity: number; active_enrollments: number };
+const empty: Workspace = { enrollments: [], plans: [], goals: [], checkIns: [], alerts: [], adjustments: [], observations: [], appointments: [], jobs: [], safetyBoundary: '' };
 
-interface Feature {
-  title: string;
-  description: string;
-  href: string;
-  icon: string;
-  color: string;
-  stat: number | null;
-  statLabel: string;
-}
+function value(form: FormData, name: string) { return String(form.get(name) || '').trim(); }
+function Status({ children }: { children: unknown }) { const text = String(children || 'unknown'); return <span className={`status status-${text.toLowerCase().replaceAll('_', '-')}`}>{text.replaceAll('_', ' ')}</span>; }
 
-function HomePage() {
+export default function Dashboard() {
   const router = useRouter();
-  const { showToast } = useToast();
-  const [stats, setStats] = useState<Stats>({ clients: 0, workouts: 0, mealPlans: 0, appointments: 0 });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [session, setSession] = useState<Session | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace>(empty);
+  const [coaches, setCoaches] = useState<Coach[]>([]);
+  const [busy, setBusy] = useState(true);
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const [clientsRes, workoutsRes, mealPlansRes, appointmentsRes] = await Promise.all([
-          fetch('/api/clients'),
-          fetch('/api/workouts'),
-          fetch('/api/meal-plans'),
-          fetch('/api/appointments'),
-        ]);
+  const request = useCallback(async (path: string, init?: RequestInit) => {
+    const response = await fetch(`/api/v1/wellness/${path}`, { ...init, headers: { ...(init?.body ? { 'content-type': 'application/json' } : {}), ...(init?.headers || {}) }, cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) { router.replace('/login'); throw new Error('Your session has expired.'); }
+    if (!response.ok) throw new Error(data.error || 'The operation could not be completed.');
+    return data;
+  }, [router]);
 
-        if (!clientsRes.ok || !workoutsRes.ok || !mealPlansRes.ok || !appointmentsRes.ok) {
-          throw new Error('One or more API requests failed');
-        }
+  const load = useCallback(async () => {
+    try {
+      const [identity, work, available] = await Promise.all([request('session'), request('workspace'), request('coaches')]);
+      setSession(identity.user); setWorkspace(work); setCoaches(available.coaches);
+    } catch (error) { setNotice({ kind: 'error', text: error instanceof Error ? error.message : 'Unable to load the workspace.' }); }
+    finally { setBusy(false); }
+  }, [request]);
 
-        const [clients, workouts, mealPlans, appointments] = await Promise.all([
-          clientsRes.json(),
-          workoutsRes.json(),
-          mealPlansRes.json(),
-          appointmentsRes.json(),
-        ]);
-
-        setStats({
-          clients: Array.isArray(clients) ? clients.length : 0,
-          workouts: Array.isArray(workouts) ? workouts.length : 0,
-          mealPlans: Array.isArray(mealPlans) ? mealPlans.length : 0,
-          appointments: Array.isArray(appointments) ? appointments.filter((a: { status: string }) => a.status === 'scheduled').length : 0,
-        });
-
-        showToast('Dashboard data loaded successfully', 'success');
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load dashboard data';
-        setError(message);
-        showToast(message, 'error');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStats();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const features: Feature[] = useMemo(() => [
-    {
-      title: 'Client Management',
-      description: 'Manage your coaching clients, track their progress, and maintain detailed records.',
-      href: '/clients',
-      icon: '\u{1F465}',
-      color: 'bg-blue-500',
-      stat: stats.clients,
-      statLabel: 'Active Clients',
-    },
-    {
-      title: 'Fitness Programs',
-      description: 'Browse and assign workouts, exercises, and training programs.',
-      href: '/fitness',
-      icon: '\u{1F4AA}',
-      color: 'bg-green-500',
-      stat: stats.workouts,
-      statLabel: 'Workouts Available',
-    },
-    {
-      title: 'Nutrition Plans',
-      description: 'Create meal plans, browse healthy recipes, and track macros.',
-      href: '/nutrition',
-      icon: '\u{1F957}',
-      color: 'bg-orange-500',
-      stat: stats.mealPlans,
-      statLabel: 'Meal Plans',
-    },
-    {
-      title: 'Wellness Goals',
-      description: 'Set and track wellness goals, monitor progress, and celebrate achievements.',
-      href: '/wellness',
-      icon: '\u{1F3AF}',
-      color: 'bg-purple-500',
-      stat: 15,
-      statLabel: 'Active Goals',
-    },
-    {
-      title: 'Appointments',
-      description: 'Schedule coaching sessions, manage bookings, and send reminders.',
-      href: '/appointments',
-      icon: '\u{1F4C5}',
-      color: 'bg-red-500',
-      stat: stats.appointments,
-      statLabel: 'Upcoming Sessions',
-    },
-    {
-      title: 'Admin Dashboard',
-      description: 'Full administrative control over all system data and settings.',
-      href: '/admin',
-      icon: '\u{2699}\u{FE0F}',
-      color: 'bg-gray-700',
-      stat: null,
-      statLabel: 'Manage System',
-    },
-  ], [stats]);
-
-  const filteredFeatures = useMemo(() => {
-    if (!searchQuery.trim()) return features;
-    const query = searchQuery.toLowerCase();
-    return features.filter(
-      (f) =>
-        f.title.toLowerCase().includes(query) ||
-        f.description.toLowerCase().includes(query) ||
-        f.statLabel.toLowerCase().includes(query)
-    );
-  }, [searchQuery, features]);
-
-  const handleCardClick = (href: string, title: string) => {
-    showToast(`Navigating to ${title}...`, 'info');
-    router.push(href);
+  useEffect(() => { void load(); }, [load]);
+  const post = async (path: string, body: unknown, message: string) => {
+    setNotice(null);
+    try { await request(path, { method: 'POST', body: JSON.stringify(body) }); setNotice({ kind: 'ok', text: message }); await load(); }
+    catch (error) { setNotice({ kind: 'error', text: error instanceof Error ? error.message : 'Operation failed.' }); }
   };
-
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && filteredFeatures.length === 1) {
-      handleCardClick(filteredFeatures[0].href, filteredFeatures[0].title);
-    }
+  const submit = (event: FormEvent<HTMLFormElement>, path: string, makeBody: (data: FormData) => unknown, message: string) => {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+    void post(path, makeBody(data), message).then(() => form.reset());
   };
+  const selected = workspace.enrollments[0];
+  const selectedId = selected?.id;
+  const openAlerts = workspace.alerts.filter(a => a.status === 'OPEN');
+  const pendingAdjustments = workspace.adjustments.filter(a => a.status === 'PENDING');
+  const failedAppointments = workspace.appointments.filter(a => a.state === 'PROVIDER_FAILED');
+  const dueJobs = workspace.jobs.filter(j => ['queued', 'retryable'].includes(String(j.status)));
+  const counts = useMemo(() => [
+    ['Enrollments', workspace.enrollments.length], ['Open safety alerts', openAlerts.length],
+    ['Appointments', workspace.appointments.length], ['Wearable records', workspace.observations.length],
+  ], [workspace, openAlerts.length]);
 
-  const handleRetry = () => {
-    setLoading(true);
-    setError(null);
-    window.location.reload();
-  };
+  if (busy) return <main className="loading-shell"><div className="spinner"/><p>Loading tenant-scoped workspace…</p></main>;
+  if (!session) return <main className="loading-shell"><p>Sign-in is required.</p><a className="primary-button" href="/login">Go to SSO</a></main>;
 
-  const statBannerItems = [
-    { label: 'Total Clients', value: stats.clients, color: 'text-blue-400', href: '/clients' },
-    { label: 'Workouts', value: stats.workouts, color: 'text-green-400', href: '/fitness' },
-    { label: 'Meal Plans', value: stats.mealPlans, color: 'text-orange-400', href: '/nutrition' },
-    { label: 'Upcoming Sessions', value: stats.appointments, color: 'text-red-400', href: '/appointments' },
-  ];
+  return <main>
+    <header className="topbar">
+      <div><p className="eyebrow">Wellness operations</p><h1>Coaching workspace</h1></div>
+      <div className="identity"><div><strong>{session.name}</strong><span>{session.role} · tenant {session.tenantId.slice(0, 8)}</span></div><button className="quiet-button" onClick={async () => { await fetch('/api/v1/wellness/auth/logout', { method: 'POST' }); router.replace('/login'); }}>Sign out</button></div>
+    </header>
 
-  const quickActions = [
-    { label: '+ Add New Client', href: '/clients', color: 'bg-blue-600 hover:bg-blue-700' },
-    { label: '+ Schedule Session', href: '/appointments', color: 'bg-red-600 hover:bg-red-700' },
-    { label: '+ Log Progress', href: '/wellness', color: 'bg-purple-600 hover:bg-purple-700' },
-    { label: '+ Create Meal Plan', href: '/nutrition', color: 'bg-orange-600 hover:bg-orange-700' },
-    { label: '+ New Workout', href: '/fitness', color: 'bg-green-600 hover:bg-green-700' },
-  ];
+    <section className="safety-banner" role="note"><strong>Safety boundary</strong><span>{workspace.safetyBoundary || 'Wellness coaching is not medical care.'} If symptoms may be life-threatening, contact local emergency services now.</span></section>
+    {notice && <div className={`notice ${notice.kind}`} role="status">{notice.text}<button aria-label="Dismiss" onClick={() => setNotice(null)}>×</button></div>}
 
-  const totalItems = stats.clients + stats.workouts + stats.mealPlans + stats.appointments;
+    <section className="stat-grid">{counts.map(([label, count]) => <div className="stat" key={String(label)}><span>{label}</span><strong>{count}</strong></div>)}</section>
 
-  return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+    {workspace.enrollments.length > 0 && <section className="panel">
+      <div className="panel-heading"><div><p className="eyebrow">Live care journey</p><h2>Assigned enrollments</h2></div><button className="quiet-button" onClick={() => void load()}>Refresh</button></div>
+      <div className="enrollment-grid">{workspace.enrollments.map(item => <article className="enrollment" key={item.id}>
+        <div><Status>{item.state}</Status><h3>{String(item.program_name)}</h3><p>{session.role === 'member' ? `Coach ${String(item.coach_subject)}` : `Member ${String(item.member_subject)}`}</p></div>
+        <dl><div><dt>Consent</dt><dd>{String(item.consent_version)} · {item.consent_revoked_at ? 'revoked' : 'active'}</dd></div><div><dt>Workflow version</dt><dd>{String(item.version)}</dd></div></dl>
+      </article>)}</div>
+    </section>}
 
-        {/* Welcome & Global Search */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-1">Welcome back</h1>
-          <p className="text-gray-400 mb-6">Your complete health and wellness coaching platform</p>
+    {session.role === 'member' && <div className="work-grid">
+      {!selected && <section className="panel accent-panel"><p className="eyebrow">Step 1</p><h2>Enroll with a coach</h2><p className="muted">Your readiness answers and explicit consent are stored with the enrollment. Payment runs as a recoverable provider job.</p>
+        {coaches.length === 0 ? <p className="empty">No coach currently has a published profile and capacity.</p> : <form onSubmit={e => submit(e, 'enrollments', f => ({ coachSubject: value(f, 'coach'), programName: value(f, 'program'), priceCents: Number(value(f, 'price')), consentVersion: 'wellness-consent-v1', consentAccepted: f.get('consent') === 'on', readinessAnswers: { requiresClinicalClearance: f.get('clearance') === 'on' }, paymentMethodToken: value(f, 'payment'), idempotencyKey: crypto.randomUUID() }), 'Enrollment recorded and payment queued.')}>
+          <label>Coach<select name="coach" required>{coaches.map(c => <option key={c.coach_subject} value={c.coach_subject}>{c.coach_subject} · {c.specialties.join(', ')} · {c.capacity - c.active_enrollments} spaces</option>)}</select></label>
+          <label>Program<input name="program" required defaultValue="Foundations" /></label><label>Price in cents<input name="price" type="number" min="1" required defaultValue="50000" /></label><label>Payment method token<input name="payment" required autoComplete="off" /></label>
+          <label className="check"><input name="clearance" type="checkbox"/> My readiness screen indicates clinical clearance is required</label><label className="check"><input name="consent" type="checkbox" required/> I consent to wellness coaching under version wellness-consent-v1</label><button className="primary-button">Enroll and queue payment</button>
+        </form>}
+      </section>}
+      {selected?.state === 'PAYMENT_FAILED' && <section className="panel danger-panel"><h2>Payment needs attention</h2><p className="muted">The provider rejected or could not complete the charge. No plan can start until payment succeeds.</p><form onSubmit={e => submit(e, `enrollments/${selectedId}/retry`, f => ({ paymentMethodToken: value(f, 'payment') }), 'Payment retry queued.')}><label>New payment token<input name="payment" required /></label><button className="primary-button">Retry payment</button></form></section>}
+      {selected && ['ACTIVE', 'SAFETY_HOLD'].includes(String(selected.state)) && <>
+        <section className="panel"><p className="eyebrow">Progress evidence</p><h2>Record a check-in</h2><p className="muted">Deterministic safety rules place the plan on hold for urgent symptoms or high pain. Recommendations never auto-edit a plan.</p><form onSubmit={e => submit(e, 'check-ins', f => ({ enrollmentId: selectedId, pain: Number(value(f, 'pain')), energy: Number(value(f, 'energy')), mood: Number(value(f, 'mood')), adherence: Number(value(f, 'adherence')), chestPain: f.get('chest') === 'on', fainting: f.get('fainting') === 'on', evidence: value(f, 'evidence') }), 'Check-in recorded and safety rules evaluated.')}>
+          <div className="field-row"><label>Pain (0–10)<input name="pain" type="number" min="0" max="10" required /></label><label>Energy (1–5)<input name="energy" type="number" min="1" max="5" required /></label><label>Mood (1–5)<input name="mood" type="number" min="1" max="5" required /></label><label>Adherence %<input name="adherence" type="number" min="0" max="100" required /></label></div>
+          <div className="field-row"><label className="check"><input name="chest" type="checkbox"/> Chest pain</label><label className="check"><input name="fainting" type="checkbox"/> Fainting</label></div><label>Evidence / reflection<textarea name="evidence" required /></label><button className="primary-button">Evaluate and save</button>
+        </form></section>
+        <section className="panel"><h2>Add a measurable goal</h2><form onSubmit={e => submit(e, 'goals', f => ({ enrollmentId: selectedId, title: value(f, 'title'), metric: value(f, 'metric'), targetValue: value(f, 'target') }), 'Goal saved.')}><label>Goal<input name="title" required /></label><label>Measure<input name="metric" required placeholder="walks per week" /></label><label>Target<input name="target" required placeholder="4" /></label><button className="secondary-button">Save goal</button></form>
+          <h3 className="section-break">Wearable provenance</h3><form onSubmit={e => submit(e, 'wearable/sync', f => ({ enrollmentId: selectedId, cursor: value(f, 'cursor'), idempotencyKey: crypto.randomUUID() }), 'Wearable sync queued.')}><label>Provider cursor<input name="cursor" required /></label><button className="secondary-button">Queue secure sync</button></form>
+        </section>
+        <section className="panel danger-panel"><h2>Consent and data processing</h2><p className="muted">Revocation is auditable, stops queued provider work, and queues any eligible refund. It cannot be undone.</p><button className="danger-button" onClick={() => { const reason = window.prompt('Document the reason for consent revocation'); if (reason && window.confirm('Revoke consent and stop this enrollment?')) void post(`enrollments/${selectedId}/revoke-consent`, { reason }, 'Consent revoked and downstream work stopped.'); }}>Revoke consent</button></section>
+      </>}
+    </div>}
 
-          <div className="relative max-w-xl">
-            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <input
-              type="text"
-              placeholder="Search sections... (e.g. clients, fitness, nutrition)"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              className="w-full pl-12 pr-4 py-3 bg-gray-800/70 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-white"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
+    {session.role === 'coach' && <div className="work-grid">
+      <section className="panel"><p className="eyebrow">Availability</p><h2>Coach profile</h2><form onSubmit={e => submit(e, 'coaches', f => ({ specialties: value(f, 'specialties').split(',').map(x => x.trim()).filter(Boolean), capacity: Number(value(f, 'capacity')) }), 'Coach profile published.')}><label>Specialties<input name="specialties" required placeholder="habit coaching, recovery" /></label><label>Concurrent enrollment capacity<input name="capacity" type="number" min="0" max="100" required /></label><button className="secondary-button">Publish capacity</button></form></section>
+      {selected && <><section className="panel"><p className="eyebrow">Human-authored</p><h2>Create a typed plan</h2><form onSubmit={e => submit(e, 'plans', f => ({ enrollmentId: selectedId, title: value(f, 'title'), plan: { movement: value(f, 'movement'), recovery: value(f, 'recovery'), support: value(f, 'support') } }), 'Plan created.')}><label>Plan title<input name="title" required /></label><label>Movement commitment<input name="movement" required /></label><label>Recovery commitment<input name="recovery" required /></label><label>Coach support<input name="support" required /></label><button className="primary-button">Create plan</button></form></section>
+      <section className="panel"><h2>Schedule a session</h2><form onSubmit={e => submit(e, 'appointments', f => ({ enrollmentId: selectedId, startsAt: new Date(value(f, 'starts')).toISOString(), endsAt: new Date(value(f, 'ends')).toISOString(), agenda: value(f, 'agenda'), idempotencyKey: crypto.randomUUID() }), 'Appointment saved and video meeting queued.')}><label>Starts<input name="starts" type="datetime-local" required /></label><label>Ends<input name="ends" type="datetime-local" required /></label><label>Agenda<input name="agenda" required /></label><button className="secondary-button">Schedule session</button></form></section></>}
+      <section className="panel wide"><div className="panel-heading"><div><p className="eyebrow">Action queue</p><h2>Safety alerts</h2></div><Status>{openAlerts.length ? 'OPEN' : 'CLEAR'}</Status></div>{openAlerts.length === 0 ? <p className="empty">No open alerts.</p> : openAlerts.map(alert => <article className="action-row" key={alert.id}><div><Status>{alert.severity}</Status><strong>{String(alert.rule_code)}</strong><p>{String(alert.message)}</p></div><div className="button-row"><button className="danger-button" onClick={() => void post(`alerts/${alert.id}/acknowledge`, { disposition: alert.severity === 'CRITICAL' ? 'REFER_TO_CLINICIAN' : 'CONTACT_MEMBER', note: 'Member contacted and routed according to the documented safety procedure.' }, 'Safety disposition recorded.')}>{alert.severity === 'CRITICAL' ? 'Document clinician referral' : 'Document member contact'}</button></div></article>)}</section>
+      <section className="panel wide"><h2>Plan adjustments awaiting judgment</h2>{pendingAdjustments.length === 0 ? <p className="empty">No pending deterministic suggestions.</p> : pendingAdjustments.map(item => <article className="action-row" key={item.id}><div><strong>{String(item.rule_code)}</strong><p>{String(item.recommendation)}</p></div><div className="button-row"><button className="secondary-button" onClick={() => void post(`adjustments/${item.id}/decision`, { decision: 'APPROVED', note: 'Coach reviewed this with member context.' }, 'Adjustment approved by coach.')}>Approve</button><button className="quiet-button" onClick={() => void post(`adjustments/${item.id}/decision`, { decision: 'REJECTED', note: 'Not appropriate for the current plan.' }, 'Adjustment rejected.')}>Reject</button></div></article>)}</section>
+      {selected?.state === 'SAFETY_HOLD' && openAlerts.length === 0 && <section className="panel danger-panel"><h2>Safety hold review</h2><p>All alerts are acknowledged. Resume only after required referral dispositions and review.</p><button className="danger-button" onClick={() => void post(`enrollments/${selectedId}/clear-safety`, { note: 'Required dispositions are documented and coach completed the safety review.' }, 'Safety hold cleared.')}>Clear documented hold</button></section>}
+      {failedAppointments.map(item => <section className="panel danger-panel" key={item.id}><h2>Video provider failed</h2><p>{new Date(String(item.starts_at)).toLocaleString()} · {String(item.agenda)}</p><button className="secondary-button" onClick={() => void post(`appointments/${item.id}/retry`, { idempotencyKey: crypto.randomUUID() }, 'Video retry queued.')}>Queue new meeting attempt</button></section>)}
+    </div>}
 
-        {/* Error Banner */}
-        {error && (
-          <div className="mb-6 bg-red-900/30 border border-red-700 rounded-xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-red-400 text-lg font-bold">!</span>
-              <p className="text-red-300 text-sm">{error}</p>
-            </div>
-            <button
-              onClick={handleRetry}
-              className="px-4 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        )}
+    {session.role === 'operator' && <div className="work-grid">
+      <section className="panel wide"><div className="panel-heading"><div><p className="eyebrow">Provider recovery</p><h2>Durable job queue</h2></div><Status>{dueJobs.length ? 'ATTENTION' : 'CLEAR'}</Status></div>{workspace.jobs.length === 0 ? <p className="empty">No provider jobs in this tenant.</p> : workspace.jobs.map(job => <article className="action-row" key={job.id}><div><Status>{job.status}</Status><strong>{String(job.provider)} · {String(job.operation)}</strong><p>Attempts {String(job.attempts)}{job.last_error_code ? ` · ${String(job.last_error_code)}` : ''}</p></div>{['queued', 'retryable'].includes(String(job.status)) && <button className="secondary-button" onClick={() => void post(`jobs/${job.id}/execute`, {}, 'Provider job executed.')}>Execute due job</button>}</article>)}</section>
+      <section className="panel"><p className="eyebrow">Resilience evidence</p><h2>Record a restore drill</h2><form onSubmit={e => submit(e, 'restore-drills', f => ({ backupReference: value(f, 'reference'), status: value(f, 'status'), evidenceUri: value(f, 'evidence') }), 'Restore drill evidence recorded.')}><label>Backup reference<input name="reference" required placeholder="vault://wellness/backup-id" /></label><label>Result<select name="status"><option value="passed">Passed</option><option value="failed">Failed</option><option value="scheduled">Scheduled</option></select></label><label>Evidence URI<input name="evidence" type="url" /></label><button className="primary-button">Record drill</button></form></section>
+    </div>}
 
-        {/* Quick Stats Summary */}
-        {!loading && !error && (
-          <div className="mb-6 bg-gray-800/30 border border-gray-700/50 rounded-xl px-6 py-3 flex items-center gap-4">
-            <span className="text-gray-400 text-sm">Quick Stats:</span>
-            <span className="text-white font-semibold text-sm">{totalItems} total items across all sections</span>
-            <span className="text-gray-600">|</span>
-            <span className="text-green-400 text-sm">{stats.clients} clients</span>
-            <span className="text-gray-600">|</span>
-            <span className="text-blue-400 text-sm">{stats.workouts} workouts</span>
-            <span className="text-gray-600">|</span>
-            <span className="text-orange-400 text-sm">{stats.mealPlans} plans</span>
-            <span className="text-gray-600">|</span>
-            <span className="text-red-400 text-sm">{stats.appointments} sessions</span>
-          </div>
-        )}
-
-        {/* Stats Banner */}
-        {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <StatSkeleton key={i} />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            {statBannerItems.map((stat, index) => (
-              <Link
-                key={index}
-                href={stat.href}
-                className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700 hover:border-gray-500 hover:bg-gray-700/50 transition-all cursor-pointer group"
-              >
-                <p className="text-gray-400 text-sm group-hover:text-gray-300 transition-colors">{stat.label}</p>
-                <p className={`text-3xl font-bold ${stat.color}`}>
-                  {stat.value}
-                </p>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {/* Feature Cards */}
-        {loading ? (
-          <GridSkeleton count={6} />
-        ) : (
-          <>
-            {filteredFeatures.length === 0 && searchQuery && (
-              <div className="text-center py-12">
-                <p className="text-gray-400 text-lg">No sections match &quot;{searchQuery}&quot;</p>
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="mt-3 text-indigo-400 hover:text-indigo-300 text-sm"
-                >
-                  Clear search
-                </button>
-              </div>
-            )}
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredFeatures.map((feature, index) => (
-                <div
-                  key={index}
-                  onClick={() => handleCardClick(feature.href, feature.title)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleCardClick(feature.href, feature.title);
-                    }
-                  }}
-                  className="group bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 hover:border-gray-500 transition-all duration-300 hover:transform hover:scale-105 hover:shadow-xl cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className={`w-12 h-12 ${feature.color} rounded-xl flex items-center justify-center text-2xl shadow-lg group-hover:scale-110 transition-transform`}>
-                      {feature.icon}
-                    </div>
-                    {feature.stat !== null && (
-                      <div className="text-right">
-                        <p className="text-2xl font-bold text-white">{feature.stat}</p>
-                        <p className="text-xs text-gray-400">{feature.statLabel}</p>
-                      </div>
-                    )}
-                    {feature.stat === null && (
-                      <div className="text-right">
-                        <p className="text-xs text-gray-400">{feature.statLabel}</p>
-                      </div>
-                    )}
-                  </div>
-                  <h2 className="text-xl font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">
-                    {feature.title}
-                  </h2>
-                  <p className="text-gray-400 text-sm leading-relaxed">{feature.description}</p>
-                  <div className="mt-4 flex items-center text-indigo-400 text-sm font-medium group-hover:translate-x-1 transition-transform">
-                    Explore
-                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* Quick Actions */}
-        <div className="mt-12 bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-          <div className="flex flex-wrap gap-3">
-            {quickActions.map((action, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  showToast(`Opening ${action.label.replace('+ ', '')}...`, 'info');
-                  router.push(action.href);
-                }}
-                className={`px-4 py-2 ${action.color} text-white rounded-lg transition-colors text-sm font-medium`}
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <footer className="mt-12 text-center text-gray-500 text-sm pb-8">
-          <p>Wellness Coach Pro - Empowering Health Professionals</p>
-          <p className="mt-1">Built with Next.js, React, and SQLite</p>
-        </footer>
-      </div>
-    </main>
-  );
-}
-
-export default function Home() {
-  return (
-    <ErrorBoundary>
-      <HomePage />
-    </ErrorBoundary>
-  );
+    <section className="panel activity"><p className="eyebrow">Persistent evidence</p><h2>Recent activity</h2><div className="activity-grid"><div><strong>Goals</strong><span>{workspace.goals.length}</span></div><div><strong>Check-ins</strong><span>{workspace.checkIns.length}</span></div><div><strong>Plans</strong><span>{workspace.plans.length}</span></div><div><strong>Appointments</strong><span>{workspace.appointments.length}</span></div></div></section>
+    <footer>Deterministic safety rules v1 · Audited state changes · Tenant-scoped access · Provider operations are idempotent and recoverable</footer>
+  </main>;
 }
