@@ -152,7 +152,7 @@ function createService({ config, pool, providers }) {
           ...result,
         });
       }
-      const p = authenticate(request.headers, config);
+      const p = request.principal || authenticate(request.headers, config);
       await tx(pool, (c) => register(c, p));
       if (parts[0] === "wellness" && parts[1] === "session" && method === "GET")
         return response(200, { user: p });

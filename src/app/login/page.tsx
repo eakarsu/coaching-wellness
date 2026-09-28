@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import LocalDemoLogin from './LocalDemoLogin';
 
 const errors: Record<string, string> = {
   invalid_sso_state: 'The sign-in response could not be verified. Start a new sign-in.',
@@ -15,6 +16,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <h1>Sign in through your organization</h1>
       <p className="muted">Access is restricted to assigned members, coaches, and operations staff. Sessions are short-lived and tenant-scoped.</p>
       {code && <p className="error-banner" role="alert">{errors[code] || 'Sign-in could not be completed.'}</p>}
+      <LocalDemoLogin />
       <Link className="primary-button full" href="/api/v1/wellness/auth/sso" prefetch={false}>Continue with SSO</Link>
       <p className="fine-print">This service supports non-medical wellness coaching. It does not diagnose or provide emergency care.</p>
     </section>

@@ -20,9 +20,8 @@ export BILLING_BASE_URL=https://billing.runtime.invalid BILLING_BEARER_TOKEN=run
 export PROVISION_ADMIN_EMAIL="${ADMIN_EMAIL:?ADMIN_EMAIL is required}" PROVISION_ADMIN_PASSWORD="${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}" PROVISION_ADMIN_NAME="${PROVISION_ADMIN_NAME:-Runtime Administrator}"
 if [[ "${MIGRATE_ON_START:-false}" == "true" ]];then ALLOW_SCHEMA_MIGRATION=1 npm --prefix "$project_dir" run migrate:deploy;fi
 npm --prefix "$project_dir" run create-admin
-cleanup(){ trap - INT TERM EXIT;[[ -z "${proxy_pid:-}" ]]||kill "$proxy_pid" 2>/dev/null||true;[[ -z "${api_pid:-}" ]]||kill "$api_pid" 2>/dev/null||true;[[ -z "${proxy_pid:-}" ]]||wait "$proxy_pid" 2>/dev/null||true;[[ -z "${api_pid:-}" ]]||wait "$api_pid" 2>/dev/null||true;};trap cleanup INT TERM EXIT
-NODE_ENV=development npm --prefix "$project_dir" run dev -- --hostname 127.0.0.1 --port "$api_port" & api_pid=$!
-for ((attempt=0;attempt<180;attempt++));do curl -sS -o /dev/null "http://127.0.0.1:$api_port/api/auth/me" 2>/dev/null&&break;ps -p "$api_pid" >/dev/null||{ wait "$api_pid";exit $?;};sleep 0.5;done
-curl -sS -o /dev/null "http://127.0.0.1:$api_port/api/auth/me"
-RUNTIME_PROXY_PORT="$ui_port" RUNTIME_PROXY_TARGET_PORT="$api_port" node "$project_dir/_runtime-proxy.mjs" & proxy_pid=$!
-wait "$api_pid" "$proxy_pid"
+cleanup(){ trap - INT TERM EXIT;[[ -z "${app_pid:-}" ]]||kill "$app_pid" 2>/dev/null||true;[[ -z "${app_pid:-}" ]]||wait "$app_pid" 2>/dev/null||true;};trap cleanup INT TERM EXIT
+NODE_ENV=development npm --prefix "$project_dir" run dev -- --hostname 127.0.0.1 --port "$ui_port" & app_pid=$!
+for ((attempt=0;attempt<180;attempt++));do curl -sS -o /dev/null "http://127.0.0.1:$ui_port/api/auth/me" 2>/dev/null&&break;ps -p "$app_pid" >/dev/null||{ wait "$app_pid";exit $?;};sleep 0.5;done
+curl -sS -o /dev/null "http://127.0.0.1:$ui_port/api/auth/me"
+wait "$app_pid"
