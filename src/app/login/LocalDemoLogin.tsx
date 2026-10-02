@@ -14,6 +14,9 @@ export default function LocalDemoLogin() {
     const credentials = await response.json();
     setEmail(credentials.email);
     setPassword(credentials.password);
+    const login = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: credentials.email, password: credentials.password }) });
+    if (!login.ok) return setError('Sign in failed.');
+    location.assign('/');
   }
 
   async function signIn(event: FormEvent) {
