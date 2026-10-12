@@ -1,5 +1,7 @@
 function make(name, s, fetchImpl) {
   return async (op, payload, key) => {
+    if (!s || !/^https:\/\//.test(s.baseUrl || '') || !s.token || /change-me|replace-me|replace-with|example\.org/i.test(`${s.baseUrl} ${s.token}`))
+      throw Object.assign(new Error(`${name} provider is not configured`), { code: `${name.toUpperCase()}_NOT_CONFIGURED`, retryable: false });
     let r;
     try {
       r = await fetchImpl(`${s.baseUrl.replace(/\/$/, "")}/${op}`, {

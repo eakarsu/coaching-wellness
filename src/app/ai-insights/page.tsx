@@ -1,5 +1,6 @@
 'use client';
 
+import AIResponseReport from "../../components/AIResponseReport";
 import { useState } from 'react';
 
 type Tab = 'smartGoal' | 'planDiff' | 'adherencePrediction';
@@ -9,6 +10,24 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'planDiff', label: 'Plan Diff & Tweaks', icon: '🔀' },
   { id: 'adherencePrediction', label: 'Adherence Predictor', icon: '📊' },
 ];
+
+export const PRESETS: Record<Tab, { label: string; name: string; goals: string; conditions: string; planA?: string; planB?: string; history?: string }[]> = {
+  smartGoal: [
+    { label: 'Walking routine', name: 'Alex Rivera (fictional)', goals: 'Build a consistent walking routine: three 30-minute walks weekly over eight weeks.', conditions: 'No health conditions supplied; confirm any movement restrictions.' },
+    { label: 'Sleep consistency', name: 'Jordan Lee (fictional)', goals: 'Establish a consistent sleep schedule and track bedtime on five nights each week.', conditions: 'Reports occasional fatigue; no diagnosis supplied.' },
+    { label: 'Strength habit', name: 'Morgan Chen (fictional)', goals: 'Complete two introductory strength sessions weekly for six weeks.', conditions: 'Past knee discomfort; ask a qualified professional about restrictions.' },
+  ],
+  planDiff: [
+    { label: 'Walking plans', name: 'Alex Rivera (fictional)', goals: 'Improve walking consistency without increasing discomfort.', conditions: 'No clinical history supplied.', planA: 'Three 20-minute walks weekly, with a rest day between walks.', planB: 'Five 15-minute walks weekly, with flexible rest days.' },
+    { label: 'Recovery plans', name: 'Jordan Lee (fictional)', goals: 'Balance activity and recovery.', conditions: 'Occasional fatigue; no diagnosis supplied.', planA: 'Two light strength sessions and two rest days per week.', planB: 'Three light strength sessions with one mobility day and two rest days.' },
+    { label: 'Sleep plans', name: 'Morgan Chen (fictional)', goals: 'Maintain a steady sleep routine.', conditions: 'No health conditions supplied.', planA: 'Track bedtime and wake time daily for four weeks.', planB: 'Track bedtime on weekdays and review patterns weekly.' },
+  ],
+  adherencePrediction: [
+    { label: 'Steady attendance', name: 'Alex Rivera (fictional)', goals: 'Attend three walking sessions weekly.', conditions: 'No health conditions supplied.', history: 'Last four weeks: 3/3, 3/3, 2/3, 3/3 sessions completed; one missed session due to travel.' },
+    { label: 'Interrupted routine', name: 'Jordan Lee (fictional)', goals: 'Complete two strength sessions weekly.', conditions: 'Occasional fatigue; no diagnosis supplied.', history: 'Last four weeks: 2/2, 1/2, 0/2, 1/2 sessions completed; schedule changed during week three.' },
+    { label: 'Returning client', name: 'Morgan Chen (fictional)', goals: 'Resume short walks four days weekly.', conditions: 'Past knee discomfort; restrictions need confirmation.', history: 'Last four weeks: 0/4, 1/4, 2/4, 2/4 walks completed; client reports gradual return.' },
+  ],
+};
 
 export default function AIInsightsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('smartGoal');
@@ -104,6 +123,14 @@ export default function AIInsightsPage() {
       </div>
 
       <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 md:p-6 mb-6 space-y-4">
+        <div aria-label="Example requests" className="space-y-2">
+          <p className="text-sm text-gray-300">Fill all fields with a fictional example. Review before running AI.</p>
+          <div className="flex flex-wrap gap-2">{PRESETS[activeTab].map(preset => <button key={preset.label} type="button" disabled={loading} onClick={() => {
+            setClientName(preset.name); setClientGoals(preset.goals); setClientHealthConditions(preset.conditions);
+            if (activeTab === 'planDiff') { setPlanA(preset.planA || ''); setPlanB(preset.planB || ''); }
+            if (activeTab === 'adherencePrediction') setHistory(preset.history || '');
+          }} className="rounded border border-gray-600 px-3 py-2 text-sm text-gray-100 disabled:opacity-50">{preset.label}</button>)}</div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Client name (optional)</label>
@@ -190,9 +217,7 @@ export default function AIInsightsPage() {
       {response !== null && (
         <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 md:p-6">
           <h2 className="text-lg font-semibold mb-3">Result</h2>
-          <pre className="bg-gray-900 border border-gray-700 rounded p-3 text-xs overflow-auto max-h-[600px] whitespace-pre-wrap text-gray-200">
-            {JSON.stringify(response, null, 2)}
-          </pre>
+          <AIResponseReport value={response}/>
         </div>
       )}
     </div>

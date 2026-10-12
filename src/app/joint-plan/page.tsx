@@ -8,7 +8,14 @@
  * indigo CTA, JSON result panel).
  */
 
+import AIResponseReport from "../../components/AIResponseReport";
 import { useState } from 'react';
+
+export const PRESETS = [
+  { label: 'Walking foundation', name: 'Alex Rivera (fictional)', goals: 'Build a three-day walking habit and plan balanced meals.', conditions: 'No conditions supplied; confirm any movement or dietary restrictions.', weeks: 8 },
+  { label: 'Strength and meals', name: 'Jordan Lee (fictional)', goals: 'Complete two introductory strength sessions weekly and plan regular meals.', conditions: 'Occasional fatigue; no diagnosis supplied.', weeks: 6 },
+  { label: 'Recovery routine', name: 'Morgan Chen (fictional)', goals: 'Balance gentle activity, recovery days, and consistent nutrition.', conditions: 'Past knee discomfort; qualified review of restrictions needed.', weeks: 12 },
+];
 
 export default function JointPlanPage() {
   const [loading, setLoading] = useState(false);
@@ -66,6 +73,7 @@ export default function JointPlanPage() {
       </p>
 
       <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 md:p-6 mb-6 space-y-4">
+        <div aria-label="Example requests" className="space-y-2"><p className="text-sm text-gray-300">Fill all fields with a fictional example. Review before generating.</p><div className="flex flex-wrap gap-2">{PRESETS.map(preset => <button key={preset.label} type="button" disabled={loading} onClick={() => { setClientName(preset.name); setGoals(preset.goals); setHealthConditions(preset.conditions); setWeeks(preset.weeks); }} className="rounded border border-gray-600 px-3 py-2 text-sm text-gray-100 disabled:opacity-50">{preset.label}</button>)}</div></div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Client name (optional)</label>
@@ -128,9 +136,7 @@ export default function JointPlanPage() {
       {response !== null && (
         <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 md:p-6">
           <h2 className="text-lg font-semibold mb-3">Result</h2>
-          <pre className="bg-gray-900 border border-gray-700 rounded p-3 text-xs overflow-auto max-h-[600px] whitespace-pre-wrap text-gray-200">
-            {JSON.stringify(response, null, 2)}
-          </pre>
+          <AIResponseReport value={response}/>
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 'use client';
+import AIFormPresets from '../../components/AIFormPresets';
 
 import { useState, useEffect } from 'react';
 import { WellnessGoal, ProgressLog, Client } from '@/types';
@@ -1200,6 +1201,7 @@ export default function WellnessPage() {
               )}
             </div>
 
+            <AIFormPresets kind={modalType === 'goal' ? 'goal' : 'progress'} value={modalType === 'goal' ? goalForm : progressForm} onChange={next => modalType === 'goal' ? setGoalForm(next as typeof goalForm) : setProgressForm(next as typeof progressForm)} prerequisite="Select a real client before generating or saving. The selection is preserved."/>
             {modalType === 'goal' ? (
               <form onSubmit={handleGoalSubmit} className="space-y-4">
                 <div>

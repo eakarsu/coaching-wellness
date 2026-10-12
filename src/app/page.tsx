@@ -61,7 +61,7 @@ export default function Dashboard() {
   ], [workspace, openAlerts.length]);
 
   if (busy) return <main className="loading-shell"><div className="spinner"/><p>Loading tenant-scoped workspace…</p></main>;
-  if (!session) return <main className="loading-shell"><p>Sign-in is required.</p><a className="primary-button" href="/login">Go to SSO</a></main>;
+  if (!session) return <main className="loading-shell"><p>{notice?.text || 'Sign-in is required.'}</p><a className="primary-button" href="/login">Go to sign-in</a></main>;
 
   return <main>
     <header className="topbar">

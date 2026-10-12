@@ -1,4 +1,5 @@
 'use client';
+import AIFormPresets from '../../components/AIFormPresets';
 
 import { useState, useEffect } from 'react';
 import { Appointment, Client, Coach } from '@/types';
@@ -917,6 +918,7 @@ export default function AppointmentsPage() {
               </button>
             </div>
 
+            <AIFormPresets kind="appointment" value={formData} onChange={setFormData} prerequisite="Select a real client and coach before generating or saving. Those selections are preserved."/>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>

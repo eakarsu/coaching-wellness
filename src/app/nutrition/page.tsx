@@ -1,4 +1,5 @@
 'use client';
+import AIFormPresets from '../../components/AIFormPresets';
 
 import { useState, useEffect, useMemo } from 'react';
 import { MealPlan, Recipe, Client, SortState } from '@/types';
@@ -969,6 +970,7 @@ export default function NutritionPage() {
               </button>
             </div>
 
+            <AIFormPresets kind={modalType === 'mealPlan' ? 'mealPlan' : 'recipe'} value={modalType === 'mealPlan' ? mealPlanForm : recipeForm} onChange={next => modalType === 'mealPlan' ? setMealPlanForm(next as typeof mealPlanForm) : setRecipeForm(next as typeof recipeForm)} prerequisite="Select a real client before generating or saving. The selection is preserved."/>
             {modalType === 'mealPlan' ? (
               <form onSubmit={handleMealPlanSubmit} className="space-y-4">
                 <div>

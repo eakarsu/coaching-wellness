@@ -1,4 +1,5 @@
 'use client';
+import AIFormPresets from '../../components/AIFormPresets';
 
 import { useState, useEffect, useMemo } from 'react';
 import { Workout, Exercise, Client, SortState } from '@/types';
@@ -911,6 +912,7 @@ export default function FitnessPage() {
               </button>
             </div>
 
+            <AIFormPresets kind={modalType === 'workout' ? 'workout' : 'exercise'} value={modalType === 'workout' ? workoutForm : exerciseForm} onChange={next => modalType === 'workout' ? setWorkoutForm(next as typeof workoutForm) : setExerciseForm(next as typeof exerciseForm)} prerequisite="Select a real client before generating or saving. The selection is preserved."/>
             {modalType === 'workout' ? (
               <form onSubmit={handleWorkoutSubmit} className="space-y-4">
                 <div>

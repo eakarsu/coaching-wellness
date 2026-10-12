@@ -1,4 +1,5 @@
 'use client';
+import AIFormPresets from '../../components/AIFormPresets';
 
 import { useState, useEffect, useMemo } from 'react';
 import { Client, SortState } from '@/types';
@@ -754,6 +755,7 @@ export default function ClientsPage() {
               </div>
             </div>
 
+            <AIFormPresets kind="client" value={formData} onChange={setFormData}/>
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               {/* Name */}
               <div>
